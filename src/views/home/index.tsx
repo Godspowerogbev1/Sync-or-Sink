@@ -19,7 +19,7 @@ const PLAYER_SIZE = 24;
 const HITBOX_PADDING = 5;
 
 // PROGRESSION
-const METERS_PER_LEVEL = 300;   
+const METERS_PER_LEVEL = 300;   // FIXED: Environment changes every 300m
 const PIXELS_TO_METERS = 0.015; 
 
 // ASSETS
@@ -30,10 +30,11 @@ const SOUNDS = {
     BGM: '/sounds/bgm.mp3',
 };
 
+// FIXED: Achievements scaled to 300...1500
 const ACHIEVEMENTS = [
-    { id: 'novice', name: 'ASCENDER', score: 200, icon: '🚀' },
-    { id: 'pro',    name: 'STRATOSPHERE', score: 600, icon: '⭐' },
-    { id: 'god',    name: 'INTERSTELLAR', score: 1200, icon: '👑' },
+    { id: 'novice', name: 'ASCENDER', score: 300, icon: '🚀' },
+    { id: 'pro',    name: 'STRATOSPHERE', score: 900, icon: '⭐' },
+    { id: 'god',    name: 'INTERSTELLAR', score: 1500, icon: '👑' },
 ];
 
 const ENVIRONMENTS = [
@@ -89,25 +90,36 @@ export const HomeView: FC = ({ }) => {
             {/* LEADERBOARD VIEW */}
             {activeTab === 'Rank' && <LeaderboardView />}
 
-            {/* SHOP PLACEHOLDER */}
+            {/* SHOP VIEW (IMPROVED) */}
             {activeTab === 'Shop' && (
-                <div className="flex flex-col h-full items-center justify-center p-8 text-center bg-black">
-                    <span className="text-4xl mb-4">🛒</span>
-                    <h2 className="text-xl font-bold mb-2">DRONE SHOP</h2>
-                    <p className="text-gray-500 text-xs">Skins coming soon!</p>
+              <div className="flex flex-col h-full items-center justify-center p-8 text-center bg-black space-y-4">
+                <span className="text-4xl mb-4">🛒</span>
+                <h2 className="text-xl font-bold mb-2">DRONE SHOP</h2>
+                <p className="text-gray-500 text-xs mb-6">Unlock skins by reaching milestones!</p>
+                
+                {/* Show locked skins */}
+                <div className="space-y-2 w-full max-w-[280px]">
+                  <div className="bg-white/5 border border-gray-700 p-3 rounded flex justify-between items-center">
+                    <span className="text-xs text-gray-500">🔒 NEON SKIN</span>
+                    <span className="text-[10px] text-gray-600">Reach 500m</span>
+                  </div>
+                  <div className="bg-white/5 border border-gray-700 p-3 rounded flex justify-between items-center">
+                    <span className="text-xs text-gray-500">🔒 GOLD SKIN</span>
+                    <span className="text-[10px] text-gray-600">Reach 1000m</span>
+                  </div>
                 </div>
+              </div>
             )}
         </div>
     </div>
   );
 };
 
-// --- 2. LEADERBOARD COMPONENT (Works locally for Demo) ---
+// --- 2. LEADERBOARD COMPONENT ---
 const LeaderboardView: FC = () => {
     const [scores, setScores] = useState<any[]>([]);
 
     useEffect(() => {
-        // 1. Get Fake "Pro" Scores
         const fakeScores = [
             { username: "SyncMaster", score: 1540 },
             { username: "DeepDiver", score: 1200 },
@@ -115,19 +127,15 @@ const LeaderboardView: FC = () => {
             { username: "GlitchHunter", score: 620 },
         ];
 
-        // 2. Get Real User Score from LocalStorage
         const localHigh = localStorage.getItem('syncOrSinkHigh');
         const localName = localStorage.getItem('syncOrSinkName') || "YOU";
 
         if (localHigh) {
-            // Check if user is already in the list (avoid duplicates if name matches)
             const userScore = parseInt(localHigh);
             fakeScores.push({ username: localName, score: userScore });
         }
 
-        // 3. Sort by Score (Highest First)
         fakeScores.sort((a, b) => b.score - a.score);
-
         setScores(fakeScores);
     }, []);
 
@@ -148,8 +156,13 @@ const LeaderboardView: FC = () => {
                     );
                 })}
             </div>
-            <div className="mt-8 text-center text-[10px] text-gray-600">
-                Play to climb the ranks!
+            <div className="mt-8 text-center">
+                <button 
+                  onClick={() => window.location.reload()}
+                  className="text-xs text-gray-500 underline hover:text-white transition-colors"
+                >
+                  Refresh Scores
+                </button>
             </div>
         </div>
     );
@@ -166,6 +179,7 @@ const GameSandbox: FC = () => {
   const [highScore, setHighScore] = useState(0);
   const [currentEnv, setCurrentEnv] = useState(ENVIRONMENTS[0]);
   const [unlockedBadges, setUnlockedBadges] = useState<string[]>([]);
+  const [ghostTimeRemaining, setGhostTimeRemaining] = useState(0); // For HUD
   
   // User Info
   const [username, setUsername] = useState('');
@@ -317,6 +331,7 @@ const GameSandbox: FC = () => {
     shieldTimer.current = 0;
     ghostActive.current = false;
     ghostTimer.current = 0;
+    setGhostTimeRemaining(0);
     lastTimeRef.current = 0;
   };
 
@@ -412,8 +427,12 @@ const GameSandbox: FC = () => {
       }
       if (ghostActive.current) {
         ghostTimer.current -= deltaTime;
+        const remaining = Math.ceil(ghostTimer.current / 60);
+        setGhostTimeRemaining(remaining > 0 ? remaining : 0); // Update HUD
+
         if (ghostTimer.current <= 0) {
             ghostActive.current = false;
+            setGhostTimeRemaining(0);
             spawnText(MID, 300, "GHOST ENDED", '#FFF');
         }
       }
@@ -462,15 +481,21 @@ const GameSandbox: FC = () => {
             });
         };
 
-        // SPAWN LOGIC
+        // SPAWN LOGIC: GHOST (0.8%) -> SHIELD (4%) -> BLOCKS
         const rand = Math.random();
-        if (rand < 0.008 && !ghostActive.current) spawnPowerup('GHOST');
-        else if (rand < 0.05 && !shieldActive.current) spawnPowerup('ORB');
+        
+        if (rand < 0.008 && !ghostActive.current) { // Ultra Rare Ghost
+            spawnPowerup('GHOST');
+        } 
+        else if (rand < 0.05 && !shieldActive.current) { // Rare Shield
+            spawnPowerup('ORB');
+        } 
         else {
             const blockRand = Math.random();
             if (blockRand < 0.35) spawnLeft();        
             else if (blockRand < 0.70) spawnRight();  
             else {
+                // STAGGER
                 const shaveGap = -(speedRef.current * 22); 
                 if (Math.random() > 0.5) { spawnLeft(0); spawnRight(shaveGap); } 
                 else { spawnRight(0); spawnLeft(shaveGap); }
@@ -486,6 +511,7 @@ const GameSandbox: FC = () => {
         const p = obs.lane === 'LEFT' ? pLeft.current : pRight.current;
         const pX = obs.lane === 'LEFT' ? (MID / 2 - PLAYER_SIZE / 2) : (MID + MID / 2 - PLAYER_SIZE / 2);
 
+        // 1. Calculate the smaller "Fair" Hitbox
         const pHitX = pX + HITBOX_PADDING;
         const pHitY = p.y + HITBOX_PADDING;
         const pHitW = PLAYER_SIZE - (HITBOX_PADDING * 2);
@@ -495,12 +521,21 @@ const GameSandbox: FC = () => {
         const obsHitY = obs.y + 2;
         const obsHitW = obs.w - 4;
         const obsHitH = obs.h - 4;
+        
         const isJumpingOver = !p.grounded && p.y < FLOOR - PLAYER_SIZE - 20;
 
-        if (pHitX < obsHitX + obsHitW && pHitX + pHitW > obsHitX && pHitY < obsHitY + obsHitH && pHitY + pHitH > obsHitY) {
-          
+        // 2. USE the smaller hitbox
+        if (
+            pHitX < obsHitX + obsHitW && 
+            pHitX + pHitW > obsHitX && 
+            pHitY < obsHitY + obsHitH && 
+            pHitY + pHitH > obsHitY
+        ) {
+          // POWERUP COLLISION
           if (obs.type === 'ORB') {
-            if (!p.grounded) return; // MUST BE GROUNDED
+            // CONSTRAINT: Must be grounded to collect powerups
+            if (!p.grounded) return;
+
             shieldActive.current = true;
             shieldTimer.current = 300;
             spawnText(pX, p.y - 40, "SHIELD!", '#FFF');
@@ -509,17 +544,23 @@ const GameSandbox: FC = () => {
             return;
           }
           if (obs.type === 'GHOST') {
-            if (!p.grounded) return; // MUST BE GROUNDED
+            // CONSTRAINT: Must be grounded to collect powerups
+            if (!p.grounded) return;
+
             ghostActive.current = true;
-            ghostTimer.current = 480; 
+            ghostTimer.current = 480; // ~8 Seconds @ 60fps
             spawnText(MID, 300, "GHOST MODE!", '#d946ef');
             obstacles.current.splice(i, 1);
             triggerEvent('level', pX, p.y, '#d946ef');
             return;
           }
           
+          // BLOCK COLLISION
           else if (!isJumpingOver) {
-            if (ghostActive.current) return; 
+            // If Ghost Mode is active, ignore collision
+            if (ghostActive.current) {
+                return; 
+            }
 
             obs.collided = true;
             if (shieldActive.current) {
@@ -825,6 +866,13 @@ const GameSandbox: FC = () => {
           <span className="text-xs font-bold font-mono text-white">{currentEnv.name}</span>
         </div>
       </div>
+
+      {/* GHOST TIMER HUD */}
+      {ghostTimeRemaining > 0 && (
+        <div className="absolute top-32 left-1/2 -translate-x-1/2 bg-purple-500/20 border border-purple-500 px-4 py-1 rounded-full text-xs font-bold text-purple-300 z-10 animate-pulse">
+            👻 GHOST: {ghostTimeRemaining}s
+        </div>
+      )}
 
       {/* PAUSE */}
       {gameState === 'PLAYING' && (
