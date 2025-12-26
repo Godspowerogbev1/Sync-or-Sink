@@ -16,7 +16,7 @@ const BASE_SPEED = 7.2;         // The Sweet Spot (Not too slow, not crazy fast)
 const SPEED_MULTIPLIER = 1.15;  // Gradual difficulty increase
 const SPAWN_RATE_BASE = 82;     // Good rhythm for obstacles
 const PLAYER_SIZE = 24;
-const HITBOX_PADDING = 5;
+const HITBOX_PADDING = 5;       // Safe zone pixels
 
 // PROGRESSION (TUNED)
 const METERS_PER_LEVEL = 300;   // Longer levels
@@ -377,24 +377,33 @@ const GameSandbox: FC = () => {
         frameCount.current = 0;
       }
 
-      // OBSTACLES
+      // OBSTACLES (COLLISION FIXED)
       obstacles.current.forEach((obs, i) => {
         obs.y += speedRef.current * deltaTime;
 
         const p = obs.lane === 'LEFT' ? pLeft.current : pRight.current;
         const pX = obs.lane === 'LEFT' ? (MID / 2 - PLAYER_SIZE / 2) : (MID + MID / 2 - PLAYER_SIZE / 2);
 
+        // 1. Calculate the smaller "Fair" Hitbox
         const pHitX = pX + HITBOX_PADDING;
         const pHitY = p.y + HITBOX_PADDING;
         const pHitW = PLAYER_SIZE - (HITBOX_PADDING * 2);
         const pHitH = PLAYER_SIZE - (HITBOX_PADDING * 2);
+
         const obsHitX = obs.x + 2;
         const obsHitY = obs.y + 2;
         const obsHitW = obs.w - 4;
         const obsHitH = obs.h - 4;
+        
         const isJumpingOver = !p.grounded && p.y < FLOOR - PLAYER_SIZE - 20;
 
-        if (pHitX < obsHitX + obsHitW && pHitX + pHitW > obsHitX && pHitY < obsHitY + obsHitH && pHitY + pHitH > obsHitY) {
+        // 2. USE the smaller hitbox
+        if (
+            pHitX < obsHitX + obsHitW && 
+            pHitX + pHitW > obsHitX && 
+            pHitY < obsHitY + obsHitH && 
+            pHitY + pHitH > obsHitY
+        ) {
           if (obs.type === 'ORB') {
             shieldActive.current = true;
             shieldTimer.current = 300;
