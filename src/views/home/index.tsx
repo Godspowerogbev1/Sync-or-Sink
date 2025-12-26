@@ -9,18 +9,18 @@ import pkg from '../../../package.json';
 const GOD_MODE = false; 
 const SHOW_JUMP_LINE = false;
 
-// PHYSICS & DIFFICULTY (PRO MODE: SNAPPY & AGGRESSIVE)
-const GRAVITY = 0.85;           // HEAVIER: You fall faster (requires quicker reflexes)
-const JUMP_FORCE = -11.5;       // STRONGER: Snap jumps to match gravity
-const BASE_SPEED = 7.5;         // FASTER START: 7.2 was too slow
-const SPEED_MULTIPLIER = 1.25;  // AGGRESSIVE: Speed increases by 25% per level (was 15%)
-const SPAWN_RATE_BASE = 75;     // DENSER: More obstacles spawn (was 82)
+// PHYSICS & DIFFICULTY (PRO MODE)
+const GRAVITY = 0.85;           
+const JUMP_FORCE = -11.5;       
+const BASE_SPEED = 7.5;         
+const SPEED_MULTIPLIER = 1.25;  
+const SPAWN_RATE_BASE = 75;     
 const PLAYER_SIZE = 24;
-const HITBOX_PADDING = 5;       // Keep the fair hitboxes
+const HITBOX_PADDING = 5;
 
 // PROGRESSION
-const METERS_PER_LEVEL = 250;   // Level up faster (difficulty ramps up sooner)
-const PIXELS_TO_METERS = 0.015; // Score climbs slowly (Every meter is a battle)
+const METERS_PER_LEVEL = 300;   
+const PIXELS_TO_METERS = 0.015; 
 
 // ASSETS
 const SOUNDS = {
@@ -47,7 +47,7 @@ const ENVIRONMENTS = [
 
 // TYPES
 type Player = { y: number; vy: number; grounded: boolean; color: string; jumps: number; flash: number };
-type Obstacle = { x: number; y: number; w: number; h: number; type: 'BLOCK' | 'ORB'; lane: 'LEFT' | 'RIGHT'; passed: boolean; collided: boolean };
+type Obstacle = { x: number; y: number; w: number; h: number; type: 'BLOCK' | 'ORB' | 'GHOST'; lane: 'LEFT' | 'RIGHT'; passed: boolean; collided: boolean };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number; type?: 'PULSE' };
 type BgProp = { x: number; y: number; size: number; speed: number; type: 'BUBBLE' | 'CLOUD' | 'STAR' };
 type FloatingText = { x: number; y: number; text: string; life: number; color: string };
@@ -101,8 +101,12 @@ const GameSandbox: FC = () => {
   const speedRef = useRef(BASE_SPEED);
   const shakeRef = useRef(0);
   const waterLevelRef = useRef(600);
+  
+  // Powerup Refs
   const shieldActive = useRef(false);
   const shieldTimer = useRef(0);
+  const ghostActive = useRef(false); 
+  const ghostTimer = useRef(0);      
 
   // Audio Refs
   const audioCtx = useRef<Record<string, HTMLAudioElement>>({});
@@ -224,6 +228,8 @@ const GameSandbox: FC = () => {
     waterLevelRef.current = 600;
     shieldActive.current = false;
     shieldTimer.current = 0;
+    ghostActive.current = false;
+    ghostTimer.current = 0;
     lastTimeRef.current = 0;
   };
 
@@ -312,9 +318,17 @@ const GameSandbox: FC = () => {
         triggerEvent('level', MID, 300, '#FFF');
       }
 
+      // POWERUP TIMERS
       if (shieldActive.current) {
         shieldTimer.current -= deltaTime;
         if (shieldTimer.current <= 0) shieldActive.current = false;
+      }
+      if (ghostActive.current) {
+        ghostTimer.current -= deltaTime;
+        if (ghostTimer.current <= 0) {
+            ghostActive.current = false;
+            spawnText(MID, 300, "GHOST ENDED", '#FFF');
+        }
       }
 
       // PROPS
@@ -353,20 +367,27 @@ const GameSandbox: FC = () => {
         const spawnRight = (yOffset = 0) => obstacles.current.push({
           x: MID + (MID / 2) - 25, y: -50 + yOffset, w: 50, h: 30, type: 'BLOCK', lane: 'RIGHT', passed: false, collided: false
         });
-        const spawnOrb = () => {
+        const spawnPowerup = (type: 'ORB' | 'GHOST') => {
             const lane = Math.random() > 0.5 ? 'LEFT' : 'RIGHT';
             obstacles.current.push({
                 x: lane === 'LEFT' ? MID/2 - 25 : MID + MID/2 - 25,
-                y: -50, w: 50, h: 25, type: 'ORB', lane: lane, passed: false, collided: false
+                y: -50, w: 50, h: 25, type: type, lane: lane, passed: false, collided: false
             });
         };
 
-        if (Math.random() < 0.05 && !shieldActive.current) {
-            spawnOrb();
-        } else {
-            const rand = Math.random();
-            if (rand < 0.35) spawnLeft();        
-            else if (rand < 0.70) spawnRight();  
+        // SPAWN LOGIC: GHOST (0.8%) -> SHIELD (4%) -> BLOCKS
+        const rand = Math.random();
+        
+        if (rand < 0.008 && !ghostActive.current) { // Ultra Rare Ghost
+            spawnPowerup('GHOST');
+        } 
+        else if (rand < 0.05 && !shieldActive.current) { // Rare Shield
+            spawnPowerup('ORB');
+        } 
+        else {
+            const blockRand = Math.random();
+            if (blockRand < 0.35) spawnLeft();        
+            else if (blockRand < 0.70) spawnRight();  
             else {
                 // STAGGER
                 const shaveGap = -(speedRef.current * 22); 
@@ -404,7 +425,11 @@ const GameSandbox: FC = () => {
             pHitY < obsHitY + obsHitH && 
             pHitY + pHitH > obsHitY
         ) {
+          // POWERUP COLLISION
           if (obs.type === 'ORB') {
+            // CONSTRAINT: Must be grounded to collect powerups
+            if (!p.grounded) return;
+
             shieldActive.current = true;
             shieldTimer.current = 300;
             spawnText(pX, p.y - 40, "SHIELD!", '#FFF');
@@ -412,7 +437,25 @@ const GameSandbox: FC = () => {
             triggerEvent('level', pX, p.y, '#FFF');
             return;
           }
+          if (obs.type === 'GHOST') {
+            // CONSTRAINT: Must be grounded to collect powerups
+            if (!p.grounded) return;
+
+            ghostActive.current = true;
+            ghostTimer.current = 480; // ~8 Seconds @ 60fps
+            spawnText(MID, 300, "GHOST MODE!", '#d946ef');
+            obstacles.current.splice(i, 1);
+            triggerEvent('level', pX, p.y, '#d946ef');
+            return;
+          }
+          
+          // BLOCK COLLISION
           else if (!isJumpingOver) {
+            // If Ghost Mode is active, ignore collision
+            if (ghostActive.current) {
+                return; 
+            }
+
             obs.collided = true;
             if (shieldActive.current) {
               shieldActive.current = false;
@@ -518,6 +561,9 @@ const GameSandbox: FC = () => {
       if (obs.type === 'ORB') {
         ctx.shadowBlur = 20; ctx.shadowColor = '#fff'; ctx.fillStyle = '#fff';
         ctx.beginPath(); ctx.arc(obs.x + obs.w / 2, obs.y + obs.h / 2, 10, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+      } else if (obs.type === 'GHOST') {
+        ctx.shadowBlur = 20; ctx.shadowColor = '#d946ef'; ctx.fillStyle = '#d946ef'; // Purple
+        ctx.beginPath(); ctx.arc(obs.x + obs.w / 2, obs.y + obs.h / 2, 10, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
       } else {
         ctx.shadowBlur = 15;
         const activeEnv = ENVIRONMENTS[nextEnvIdx.current];
@@ -531,7 +577,17 @@ const GameSandbox: FC = () => {
     const drawPlayer = (p: Player, xOffset: number, color: string) => {
       const x = xOffset - PLAYER_SIZE / 2;
       if (p.flash > 0 && Math.floor(Date.now() / 50) % 2 === 0) return;
-      ctx.shadowBlur = 20; ctx.shadowColor = color; ctx.fillStyle = color;
+      
+      // GHOST MODE VISUALS
+      if (ghostActive.current) {
+          ctx.globalAlpha = 0.4; // TRANSPARENT
+          ctx.shadowBlur = 0;
+      } else {
+          ctx.shadowBlur = 20; 
+          ctx.shadowColor = color; 
+      }
+      
+      ctx.fillStyle = color;
       if (shieldActive.current) {
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(x + PLAYER_SIZE / 2, p.y + PLAYER_SIZE / 2, PLAYER_SIZE, 0, Math.PI * 2); ctx.stroke();
@@ -539,6 +595,8 @@ const GameSandbox: FC = () => {
       let w = PLAYER_SIZE, h = PLAYER_SIZE;
       if (!p.grounded) { h = PLAYER_SIZE + 4; w = PLAYER_SIZE - 4; }
       ctx.fillRect(x + (PLAYER_SIZE - w) / 2, p.y, w, h);
+      
+      ctx.globalAlpha = 1.0; // Reset Alpha
     };
     drawPlayer(pLeft.current, MID / 2, ENVIRONMENTS[nextEnvIdx.current].accent);
     drawPlayer(pRight.current, MID + MID / 2, '#FFF');
@@ -678,7 +736,7 @@ const GameSandbox: FC = () => {
   }
   
   const handleShare = () => {
-      const text = `I ascended to ${score}m in SyncOrSink! Can you beat the rising tide? 🌊🚀 #SolanaGame`;
+      const text = `I ascended to ${score}m in SyncOrSink! Can you beat the rising tide? #SyncOrSink 🌊🚀 #SolanaGame`;
       window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
   };
 
