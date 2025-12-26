@@ -9,18 +9,18 @@ import pkg from '../../../package.json';
 const GOD_MODE = false; 
 const SHOW_JUMP_LINE = false;
 
-// PHYSICS & DIFFICULTY
-const GRAVITY = 0.7; 
-const JUMP_FORCE = -10.5; 
-const BASE_SPEED = 6.0; 
-const SPEED_MULTIPLIER = 1.1; 
-const SPAWN_RATE_BASE = 85; 
+// PHYSICS & DIFFICULTY (BALANCED: FUN BUT CHALLENGING)
+const GRAVITY = 0.75;           // Snappy but not too heavy
+const JUMP_FORCE = -10.8;       // Perfect jump height for this gravity
+const BASE_SPEED = 7.2;         // The Sweet Spot (Not too slow, not crazy fast)
+const SPEED_MULTIPLIER = 1.15;  // Gradual difficulty increase
+const SPAWN_RATE_BASE = 82;     // Good rhythm for obstacles
 const PLAYER_SIZE = 24;
 const HITBOX_PADDING = 5;
 
-// PROGRESSION
-const METERS_PER_LEVEL = 300;   
-const PIXELS_TO_METERS = 0.02;  
+// PROGRESSION (TUNED)
+const METERS_PER_LEVEL = 300;   // Longer levels
+const PIXELS_TO_METERS = 0.015; // Slow meter count (High scores feel earned)
 
 // ASSETS
 const SOUNDS = {
@@ -31,9 +31,9 @@ const SOUNDS = {
 };
 
 const ACHIEVEMENTS = [
-    { id: 'novice', name: 'ASCENDER', score: 300, icon: '🚀' },
-    { id: 'pro',    name: 'STRATOSPHERE', score: 900, icon: '⭐' },
-    { id: 'god',    name: 'INTERSTELLAR', score: 1500, icon: '👑' },
+    { id: 'novice', name: 'ASCENDER', score: 200, icon: '🚀' },
+    { id: 'pro',    name: 'STRATOSPHERE', score: 600, icon: '⭐' },
+    { id: 'god',    name: 'INTERSTELLAR', score: 1200, icon: '👑' },
 ];
 
 const ENVIRONMENTS = [
