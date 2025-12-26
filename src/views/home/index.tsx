@@ -9,18 +9,18 @@ import pkg from '../../../package.json';
 const GOD_MODE = false; 
 const SHOW_JUMP_LINE = false;
 
-// PHYSICS & DIFFICULTY (BALANCED: FUN BUT CHALLENGING)
-const GRAVITY = 0.75;           // Snappy but not too heavy
-const JUMP_FORCE = -10.8;       // Perfect jump height for this gravity
-const BASE_SPEED = 7.2;         // The Sweet Spot (Not too slow, not crazy fast)
-const SPEED_MULTIPLIER = 1.15;  // Gradual difficulty increase
-const SPAWN_RATE_BASE = 82;     // Good rhythm for obstacles
+// PHYSICS & DIFFICULTY (PRO MODE: SNAPPY & AGGRESSIVE)
+const GRAVITY = 0.85;           // HEAVIER: You fall faster (requires quicker reflexes)
+const JUMP_FORCE = -11.5;       // STRONGER: Snap jumps to match gravity
+const BASE_SPEED = 7.5;         // FASTER START: 7.2 was too slow
+const SPEED_MULTIPLIER = 1.25;  // AGGRESSIVE: Speed increases by 25% per level (was 15%)
+const SPAWN_RATE_BASE = 75;     // DENSER: More obstacles spawn (was 82)
 const PLAYER_SIZE = 24;
-const HITBOX_PADDING = 5;       // Safe zone pixels
+const HITBOX_PADDING = 5;       // Keep the fair hitboxes
 
-// PROGRESSION (TUNED)
-const METERS_PER_LEVEL = 300;   // Longer levels
-const PIXELS_TO_METERS = 0.015; // Slow meter count (High scores feel earned)
+// PROGRESSION
+const METERS_PER_LEVEL = 250;   // Level up faster (difficulty ramps up sooner)
+const PIXELS_TO_METERS = 0.015; // Score climbs slowly (Every meter is a battle)
 
 // ASSETS
 const SOUNDS = {
