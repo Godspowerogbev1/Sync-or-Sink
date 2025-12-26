@@ -5,11 +5,11 @@ import pkg from '../../../package.json';
 
 // ❌ DO NOT EDIT ANYTHING ABOVE THIS LINE
 
-// --- GAME CONFIGURATION ---
+// --- GAME CONFIGURATION & CONSTANTS ---
 const GOD_MODE = false; 
 const SHOW_JUMP_LINE = false;
 
-// PHYSICS & DIFFICULTY (HARDCORE)
+// PHYSICS & DIFFICULTY
 const GRAVITY = 0.7; 
 const JUMP_FORCE = -10.5; 
 const BASE_SPEED = 6.0; 
@@ -18,11 +18,11 @@ const SPAWN_RATE_BASE = 85;
 const PLAYER_SIZE = 24;
 const HITBOX_PADDING = 5;
 
-// PROGRESSION (HARDER: 300m per level)
+// PROGRESSION
 const METERS_PER_LEVEL = 300;   
 const PIXELS_TO_METERS = 0.02;  
 
-// --- ASSETS ---
+// ASSETS
 const SOUNDS = {
     JUMP: '/sounds/jump.wav',
     CRASH: '/sounds/crash.wav',
@@ -45,6 +45,7 @@ const ENVIRONMENTS = [
     { name: "SPACE",    type: 'SPACE',      bgTop: '#000000', bgBot: '#000000', accent: '#ff0000' }
 ];
 
+// TYPES
 type Player = { y: number; vy: number; grounded: boolean; color: string; jumps: number; flash: number };
 type Obstacle = { x: number; y: number; w: number; h: number; type: 'BLOCK' | 'ORB'; lane: 'LEFT' | 'RIGHT'; passed: boolean; collided: boolean };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number; type?: 'PULSE' };
@@ -53,7 +54,62 @@ type FloatingText = { x: number; y: number; text: string; life: number; color: s
 type GameMode = 'LINKED' | 'DUAL';
 type GameState = 'START' | 'TUTORIAL' | 'PLAYING' | 'PAUSED' | 'GAMEOVER';
 
+// --- 1. THE APP SHELL (HomeView) ---
 export const HomeView: FC = ({ }) => {
+  // State to track which tab is active
+  const [activeTab, setActiveTab] = useState('Feed');
+
+  return (
+    <div className="flex flex-col h-screen w-full bg-black justify-center items-center font-mono select-none text-white overflow-hidden">
+        
+        {/* --- SCROLLY FAKE HEADER (Interactive) --- */}
+        <div className="flex items-center gap-2 rounded-full bg-white/5 px-2 py-1 mb-4 z-50 border border-white/10">
+          {['Feed', 'Casino', 'Kids'].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`rounded-full px-4 py-1 text-xs font-bold transition-all duration-200 ${
+                activeTab === tab 
+                  ? 'bg-slate-800 text-white shadow-lg scale-105' 
+                  : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        {/* --- MAIN CONTENT AREA --- */}
+        <div className="relative w-full max-w-[400px] h-full max-h-[800px] border-x-4 border-gray-900 bg-black shadow-2xl overflow-hidden rounded-3xl">
+            
+            {/* SHOW GAME ONLY ON FEED TAB */}
+            {activeTab === 'Feed' && <GameSandbox />}
+
+            {/* PLACEHOLDER FOR OTHER TABS */}
+            {activeTab !== 'Feed' && (
+              <div className="flex flex-col h-full items-center justify-center text-center p-8 space-y-4 animate-fade-in">
+                <div className="text-6xl">{activeTab === 'Casino' ? '🎰' : '🧸'}</div>
+                <h2 className="text-2xl font-bold text-gray-700">{activeTab}</h2>
+                <p className="text-gray-500 text-sm">
+                  This section is under construction.<br/>
+                  Go back to <strong className="text-white">Feed</strong> to play!
+                </p>
+                <button 
+                  onClick={() => setActiveTab('Feed')}
+                  className="mt-4 px-6 py-2 bg-white/10 hover:bg-white/20 rounded-full text-xs font-bold transition-colors"
+                >
+                  BACK TO GAME
+                </button>
+              </div>
+            )}
+
+        </div>
+    </div>
+  );
+};
+
+// --- 2. THE GAME LOGIC (GameSandbox) ---
+const GameSandbox: FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // UI State
@@ -68,7 +124,7 @@ export const HomeView: FC = ({ }) => {
   const gameStateRef = useRef<GameState>('START');
   const gameModeRef = useRef<GameMode>('LINKED');
   const scoreRef = useRef(0);
-  const highScoreRef = useRef(0); // <--- FIXED: Added Ref for High Score
+  const highScoreRef = useRef(0);
   const distanceRef = useRef(0);
   const levelRef = useRef(0);
 
@@ -98,14 +154,14 @@ export const HomeView: FC = ({ }) => {
   const texts = useRef<FloatingText[]>([]);
   const bgProps = useRef<BgProp[]>([]);
 
-  // --- INIT ASSETS & STORAGE ---
+  // --- INIT ---
   useEffect(() => {
       // Load High Score
       const savedScore = localStorage.getItem('syncOrSinkHigh');
       if (savedScore) {
           const parsed = parseInt(savedScore);
           setHighScore(parsed);
-          highScoreRef.current = parsed; // Sync the Ref immediately
+          highScoreRef.current = parsed; 
       }
 
       const savedBadges = localStorage.getItem('syncOrSinkBadges');
@@ -124,7 +180,7 @@ export const HomeView: FC = ({ }) => {
       bgmRef.current = bgm;
   }, []);
 
-  // --- MUSIC CONTROLLER ---
+  // --- MUSIC ---
   useEffect(() => {
       const bgm = bgmRef.current;
       if (!bgm) return;
@@ -170,7 +226,6 @@ export const HomeView: FC = ({ }) => {
           localStorage.setItem('syncOrSinkBadges', JSON.stringify(newBadges));
       }
       
-      // FIXED HIGH SCORE LOGIC USING REF
       if (finalScore > highScoreRef.current) {
           setHighScore(finalScore);
           highScoreRef.current = finalScore;
@@ -255,7 +310,7 @@ export const HomeView: FC = ({ }) => {
 
     if (gameStateRef.current === 'PLAYING') {
       
-      // 1. CALCULATE DISTANCE (ALTITUDE)
+      // ALTITUDE
       distanceRef.current += (speedRef.current * deltaTime) * PIXELS_TO_METERS;
       const currentAltitude = Math.floor(distanceRef.current);
       
@@ -264,13 +319,13 @@ export const HomeView: FC = ({ }) => {
           scoreRef.current = currentAltitude;
       }
 
-      // TRANSITION LOGIC
+      // TRANSITION
       if (transitionProgress.current < 1) {
         transitionProgress.current += 0.015 * deltaTime; 
         if (transitionProgress.current >= 1) transitionProgress.current = 1;
       }
 
-      // LEVEL LOGIC
+      // LEVEL
       const newLevel = Math.floor(currentAltitude / METERS_PER_LEVEL);
       if (newLevel > levelRef.current) {
         levelRef.current = newLevel;
@@ -284,12 +339,9 @@ export const HomeView: FC = ({ }) => {
         speedRef.current = BASE_SPEED * Math.pow(SPEED_MULTIPLIER, newLevel);
 
         spawnText(MID, 200, "ASCENDING!", '#FFF');
-        
-        // Only show text if biome changed
         if (prevEnvIdx.current !== nextEnvIdx.current) {
             spawnText(MID, 230, ENVIRONMENTS[nextEnvIdx.current].name + " REACHED!", '#FF0000');
         }
-        
         triggerEvent('level', MID, 300, '#FFF');
       }
 
@@ -298,7 +350,7 @@ export const HomeView: FC = ({ }) => {
         if (shieldTimer.current <= 0) shieldActive.current = false;
       }
 
-      // BACKGROUND PROPS
+      // PROPS
       const activeEnv = ENVIRONMENTS[nextEnvIdx.current];
       if (Math.random() < 0.05) spawnBgProp(activeEnv.type);
       bgProps.current.forEach(p => {
@@ -349,7 +401,7 @@ export const HomeView: FC = ({ }) => {
             if (rand < 0.35) spawnLeft();        
             else if (rand < 0.70) spawnRight();  
             else {
-                // STAGGER LOGIC
+                // STAGGER
                 const shaveGap = -(speedRef.current * 22); 
                 if (Math.random() > 0.5) { spawnLeft(0); spawnRight(shaveGap); } 
                 else { spawnRight(0); spawnLeft(shaveGap); }
@@ -403,7 +455,6 @@ export const HomeView: FC = ({ }) => {
                 setGameState('GAMEOVER');
                 waterLevelRef.current = 600;
                 checkAchievements(scoreRef.current);
-                
                 if (bgmRef.current) {
                     bgmRef.current.pause();
                     bgmRef.current.currentTime = 0;
@@ -450,7 +501,6 @@ export const HomeView: FC = ({ }) => {
         const nextGrad = ctx.createLinearGradient(0, 0, 0, H);
         nextGrad.addColorStop(0, nextEnv.bgTop);
         nextGrad.addColorStop(1, nextEnv.bgBot);
-        
         ctx.fillStyle = nextGrad;
         if (transitionProgress.current < 1) {
             const splitY = Math.ceil(H * transitionProgress.current) + 2; 
@@ -459,8 +509,6 @@ export const HomeView: FC = ({ }) => {
             ctx.fillRect(-1, -1, W + 2, H + 2);
         }
     }
-
-    const activeEnv = ENVIRONMENTS[nextEnvIdx.current];
 
     bgProps.current.forEach(p => {
       if (p.type === 'BUBBLE') {
@@ -496,6 +544,7 @@ export const HomeView: FC = ({ }) => {
         ctx.beginPath(); ctx.arc(obs.x + obs.w / 2, obs.y + obs.h / 2, 10, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
       } else {
         ctx.shadowBlur = 15;
+        const activeEnv = ENVIRONMENTS[nextEnvIdx.current];
         const color = obs.lane === 'LEFT' ? activeEnv.accent : '#FFF';
         ctx.shadowColor = color; ctx.fillStyle = color;
         ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
@@ -515,13 +564,11 @@ export const HomeView: FC = ({ }) => {
       if (!p.grounded) { h = PLAYER_SIZE + 4; w = PLAYER_SIZE - 4; }
       ctx.fillRect(x + (PLAYER_SIZE - w) / 2, p.y, w, h);
     };
-    drawPlayer(pLeft.current, MID / 2, activeEnv.accent);
+    drawPlayer(pLeft.current, MID / 2, ENVIRONMENTS[nextEnvIdx.current].accent);
     drawPlayer(pRight.current, MID + MID / 2, '#FFF');
 
-    // DRAW PARTICLES (Including Pulses)
     particles.current.forEach((p, i) => {
       if (p.type === 'PULSE') {
-          // Visual Pulse (Shockwave)
           p.size += 3;
           p.life -= 0.05;
           ctx.strokeStyle = p.color;
@@ -532,7 +579,6 @@ export const HomeView: FC = ({ }) => {
           ctx.stroke();
           ctx.globalAlpha = 1.0;
       } else {
-          // Standard Particle
           p.x += p.vx; p.y += p.vy; p.life -= 0.05;
           if (p.life > 0) { ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fillRect(p.x, p.y, p.size, p.size); ctx.globalAlpha = 1.0; }
       }
@@ -609,13 +655,11 @@ export const HomeView: FC = ({ }) => {
 
   const toggleMode = (e: React.MouseEvent) => { e.stopPropagation(); const newMode = gameMode === 'LINKED' ? 'DUAL' : 'LINKED'; setGameMode(newMode); gameModeRef.current = newMode; };
   
-  // UI HANDLERS
   const handleStartGame = () => {
       if (bgmRef.current) {
           bgmRef.current.currentTime = 0;
-          bgmRef.current.play().catch(() => {}); // START MUSIC
+          bgmRef.current.play().catch(() => {});
       }
-
       const seenTutorial = localStorage.getItem('syncOrSinkTutorial');
       if (!seenTutorial) {
           gameStateRef.current = 'TUTORIAL';
@@ -658,15 +702,14 @@ export const HomeView: FC = ({ }) => {
   }
   
   const handleShare = () => {
-      const text = `I ascended to ${score}m in SyncOrSink! Can you beat the rising tide? 🌊🚀 #SolanaGame #SyncorSink`;
+      const text = `I ascended to ${score}m in SyncOrSink! Can you beat the rising tide? 🌊🚀 #SolanaGame`;
       window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   return (
-    <div className="flex flex-col h-screen w-full bg-black justify-center items-center font-mono select-none text-white overflow-hidden">
-
+    <>
       {/* HUD */}
-      <div className="absolute top-8 w-full max-w-[400px] flex justify-between px-4 z-10 pointer-events-none">
+      <div className="absolute top-16 w-full max-w-[400px] flex justify-between px-4 z-10 pointer-events-none">
         <div className="bg-black/50 backdrop-blur px-4 py-2 rounded-full border border-white/20 flex flex-col items-center">
           <span className="text-[10px] text-gray-400 tracking-[0.3em]">ALTITUDE</span>
           <span className="text-xl font-bold font-mono text-white">{score}m</span>
@@ -681,22 +724,21 @@ export const HomeView: FC = ({ }) => {
       {gameState === 'PLAYING' && (
         <button
           onClick={handlePause}
-          className="absolute top-8 right-1/2 translate-x-12 z-20 bg-white/10 hover:bg-white/20 p-2 rounded-full backdrop-blur border border-white/20 pointer-events-auto"
+          className="absolute top-16 right-1/2 translate-x-12 z-20 bg-white/10 hover:bg-white/20 p-2 rounded-full backdrop-blur border border-white/20 pointer-events-auto"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
         </button>
       )}
 
       {/* GAME CANVAS */}
-      <div className="relative w-full max-w-[400px] h-full max-h-[800px] border-x-4 border-gray-900 bg-black shadow-2xl">
-        <canvas 
-            ref={canvasRef} 
-            width={400} 
-            height={600} 
-            className="w-full h-full object-cover touch-none" 
-            style={{ background: '#000' }} 
-            onPointerDown={handleTap} 
-        />
+      <canvas 
+          ref={canvasRef} 
+          width={400} 
+          height={600} 
+          className="w-full h-full object-cover touch-none" 
+          style={{ background: '#000' }} 
+          onPointerDown={handleTap} 
+      />
 
         {/* MENUS */}
         {(gameState !== 'PLAYING') && (
@@ -775,7 +817,6 @@ export const HomeView: FC = ({ }) => {
             )}
           </div>
         )}
-      </div>
-    </div>
+    </>
   );
 };
