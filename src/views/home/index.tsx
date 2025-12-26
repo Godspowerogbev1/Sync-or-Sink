@@ -759,10 +759,11 @@ const GameSandbox: FC = () => {
                        <p>👆 <strong className="text-white">TAP</strong> to Jump.</p>
                        <p>👆👆 <strong className="text-white">DOUBLE TAP</strong> to Jump Higher.</p>
                        <p>⚠️ Avoid the <strong className="text-red-400">BLOCKS</strong>.</p>
+                       <p>🌊 Don&apos;t let the water rise.</p>
                        <p>🎮 <strong className="text-white">LINKED MODE:</strong> One tap moves BOTH droids.</p>
                        <p>🎯 <strong className="text-white">DUAL MODE:</strong> Tap left/right independently.</p>
                    </div>
-                   <button onClick={finishTutorial} className="bg-white text-black px-10 py-4 rounded-full font-bold text-lg animate-pulse">I'M READY</button>
+                   <button onClick={finishTutorial} className="bg-white text-black px-10 py-4 rounded-full font-bold text-lg animate-pulse">I&apos;M READY</button>
                </div>
             )}
 
