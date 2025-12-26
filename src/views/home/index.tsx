@@ -56,53 +56,20 @@ type GameState = 'START' | 'TUTORIAL' | 'PLAYING' | 'PAUSED' | 'GAMEOVER';
 
 // --- 1. THE APP SHELL (HomeView) ---
 export const HomeView: FC = ({ }) => {
-  // State to track which tab is active
-  const [activeTab, setActiveTab] = useState('Feed');
-
   return (
     <div className="flex flex-col h-screen w-full bg-black justify-center items-center font-mono select-none text-white overflow-hidden">
         
-        {/* --- SCROLLY FAKE HEADER (Interactive) --- */}
+        {/* --- SCROLLY FAKE HEADER (Cosmetic Only) --- */}
         <div className="flex items-center gap-2 rounded-full bg-white/5 px-2 py-1 mb-4 z-50 border border-white/10">
-          {['Feed', 'Casino', 'Kids'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`rounded-full px-4 py-1 text-xs font-bold transition-all duration-200 ${
-                activeTab === tab 
-                  ? 'bg-slate-800 text-white shadow-lg scale-105' 
-                  : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
+          <div className="rounded-full bg-slate-800 px-4 py-1 font-bold text-xs text-white shadow-lg">Feed</div>
+          <div className="rounded-full px-3 py-1 text-slate-500 text-xs">Casino</div>
+          <div className="rounded-full px-3 py-1 text-slate-500 text-xs">Kids</div>
         </div>
 
         {/* --- MAIN CONTENT AREA --- */}
         <div className="relative w-full max-w-[400px] h-full max-h-[800px] border-x-4 border-gray-900 bg-black shadow-2xl overflow-hidden rounded-3xl">
-            
-            {/* SHOW GAME ONLY ON FEED TAB */}
-            {activeTab === 'Feed' && <GameSandbox />}
-
-            {/* PLACEHOLDER FOR OTHER TABS */}
-            {activeTab !== 'Feed' && (
-              <div className="flex flex-col h-full items-center justify-center text-center p-8 space-y-4 animate-fade-in">
-                <div className="text-6xl">{activeTab === 'Casino' ? '🎰' : '🧸'}</div>
-                <h2 className="text-2xl font-bold text-gray-700">{activeTab}</h2>
-                <p className="text-gray-500 text-sm">
-                  This section is under construction.<br/>
-                  Go back to <strong className="text-white">Feed</strong> to play!
-                </p>
-                <button 
-                  onClick={() => setActiveTab('Feed')}
-                  className="mt-4 px-6 py-2 bg-white/10 hover:bg-white/20 rounded-full text-xs font-bold transition-colors"
-                >
-                  BACK TO GAME
-                </button>
-              </div>
-            )}
-
+            {/* GAME IS ALWAYS VISIBLE */}
+            <GameSandbox />
         </div>
     </div>
   );
