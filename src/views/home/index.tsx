@@ -11,7 +11,7 @@ const SHOW_JUMP_LINE = false;
 // PHYSICS
 const GRAVITY = 0.85;           
 const JUMP_FORCE = -11.5;
-const DIVE_FORCE = 2.0; // New: Downward thrust       
+const DIVE_FORCE = 2.0;       
 const BASE_SPEED = 7.5;         
 const SPEED_MULTIPLIER = 1.25;  
 const SPAWN_RATE_BASE = 75;     
@@ -191,7 +191,7 @@ const GameSandbox: FC = () => {
   const frameCount = useRef(0);
   const speedRef = useRef(BASE_SPEED);
   const shakeRef = useRef(0);
-  const waterLevelRef = useRef(700); // Start way below screen
+  const waterLevelRef = useRef(750); // Start LOWER
   
   // Powerup Refs
   const shieldActive = useRef(false);
@@ -295,7 +295,6 @@ const GameSandbox: FC = () => {
           highScoreRef.current = finalScore;
           localStorage.setItem('syncOrSinkHigh', finalScore.toString());
       }
-      // Track Runs
       const newRuns = (parseInt(localStorage.getItem('syncOrSinkRuns') || '0')) + 1;
       localStorage.setItem('syncOrSinkRuns', newRuns.toString());
       setTotalRuns(newRuns);
@@ -308,7 +307,7 @@ const GameSandbox: FC = () => {
     pLeft.current = { y: 450, vy: 0, grounded: true, color: ENVIRONMENTS[0].accent, jumps: 0, flash: 0, jumpBuffer: 0, holding: false };
     pRight.current = { y: 450, vy: 0, grounded: true, color: ENVIRONMENTS[0].accent, jumps: 0, flash: 0, jumpBuffer: 0, holding: false };
     obstacles.current = []; particles.current = []; texts.current = []; bgProps.current = [];
-    waterLevelRef.current = 700; // Reset Water
+    waterLevelRef.current = 750; // RESET LOW
     shieldActive.current = false; shieldTimer.current = 0;
     ghostActive.current = false; ghostTimer.current = 0;
     glitchActive.current = false; glitchTimer.current = 0;
@@ -366,14 +365,13 @@ const GameSandbox: FC = () => {
       const currentAltitude = Math.floor(distanceRef.current);
       if (currentAltitude > scoreRef.current) { setScore(currentAltitude); scoreRef.current = currentAltitude; }
 
-      // RISING WATER LOGIC
-      // Water rises based on a fraction of game speed (it chases you)
-      // If you are fast, you outrun it. If you stumble, it catches up.
-      waterLevelRef.current -= (currentSpeed * 0.15) * deltaTime; 
-      // Clamp water so it doesn't go above a certain point unless you really mess up
-      if (waterLevelRef.current < H - 100) {
-          // If water is too high, give player a chance to run (slow rise)
-          waterLevelRef.current += 0.5 * deltaTime; 
+      // BALANCED WATER LOGIC
+      // 1. Rise slowly
+      waterLevelRef.current -= (currentSpeed * 0.08) * deltaTime; // SLOWER RISE
+      
+      // 2. Cap water (so it doesn't instantly kill)
+      if (waterLevelRef.current < H - 150) {
+          waterLevelRef.current += 0.2 * deltaTime; // Rubber band effect
       }
 
       // Check Drowning
@@ -397,6 +395,10 @@ const GameSandbox: FC = () => {
         nextEnvIdx.current = Math.min(newLevel, ENVIRONMENTS.length - 1);
         transitionProgress.current = 0; setCurrentEnv(ENVIRONMENTS[nextEnvIdx.current]);
         speedRef.current = BASE_SPEED * Math.pow(SPEED_MULTIPLIER, newLevel);
+        
+        // REWARD: PUSH WATER DOWN ON LEVEL UP
+        waterLevelRef.current += 150; 
+        
         spawnText(MID, 200, "DEPTH UP!", '#FFF'); triggerEvent('level', MID, 300, '#FFF');
         pulse(100); 
       }
@@ -476,7 +478,9 @@ const GameSandbox: FC = () => {
         if (pHitX < obsHitX + obsHitW && pHitX + pHitW > obsHitX && pHitY < obsHitY + obsHitH && pHitY + pHitH > obsHitY) {
           if (obs.type === 'ORB') {
             if (!p.grounded) return; 
-            shieldActive.current = true; shieldTimer.current = 300; spawnText(pX, p.y - 40, "BUBBLE UP!", '#FFF');
+            shieldActive.current = true; shieldTimer.current = 300; 
+            waterLevelRef.current += 150; // REWARD: PUSH WATER DOWN
+            spawnText(pX, p.y - 40, "AIR UP!", '#FFF');
             obstacles.current.splice(i, 1); triggerEvent('level', pX, p.y, '#FFF'); pulse(50);
             return;
           }
@@ -489,7 +493,8 @@ const GameSandbox: FC = () => {
           if (obs.type === 'GLITCH') {
               if (glitchActive.current) return;
               glitchActive.current = true; glitchTimer.current = 360; 
-              spawnText(MID, 300, "CURRENT SURGE!", '#ff0000'); shakeRef.current = 20;
+              waterLevelRef.current += 300; // REWARD: HUGE WATER PUSHBACK
+              spawnText(MID, 300, "SURGE BOOST!", '#ff0000'); shakeRef.current = 20;
               triggerEvent('crash', pX, p.y, '#F00'); obstacles.current.splice(i, 1); pulse(150);
               return;
           }
@@ -502,7 +507,7 @@ const GameSandbox: FC = () => {
             } else if (p.flash <= 0) {
               shakeRef.current = 20; spawnExplosion(pX, p.y, activeEnv.accent, 30); triggerEvent('crash', pX, p.y, '#F00');
               if (!GOD_MODE) {
-                gameStateRef.current = 'GAMEOVER'; setGameState('GAMEOVER'); // Don't reset water here, let it cover screen
+                gameStateRef.current = 'GAMEOVER'; setGameState('GAMEOVER'); 
                 checkAchievements(scoreRef.current); pulse(400); 
                 if (bgmRef.current) { bgmRef.current.pause(); bgmRef.current.currentTime = 0; }
               } else { p.flash = 20; spawnText(MID, 300, "HIT! (GOD MODE)", '#FF0000'); }
@@ -510,7 +515,6 @@ const GameSandbox: FC = () => {
           }
         }
         
-        // NEAR MISS DETECTION (Juice)
         if (!obs.collided && !obs.passed && obs.type === 'BLOCK') {
              const distX = Math.abs(pHitX - obsHitX);
              const distY = Math.abs(pHitY - obsHitY);
@@ -525,7 +529,6 @@ const GameSandbox: FC = () => {
     }
 
     if (gameStateRef.current === 'GAMEOVER') { 
-        // Fast Rise water on Game Over
         if (waterLevelRef.current > -50) waterLevelRef.current -= 500 * deltaTime; 
     }
 
@@ -565,20 +568,15 @@ const GameSandbox: FC = () => {
     });
 
     // DRAW RISING WATER (THE ABYSS)
-    const abyssY = Math.max(waterLevelRef.current, 0); // Don't go above top
+    const abyssY = Math.max(waterLevelRef.current, 0); 
     const waterGrad = ctx.createLinearGradient(0, abyssY, 0, H);
     waterGrad.addColorStop(0, 'rgba(0, 100, 255, 0.8)'); // Surface
     waterGrad.addColorStop(1, 'rgba(0, 0, 50, 1.0)');    // Deep
     ctx.fillStyle = waterGrad;
     ctx.fillRect(0, abyssY, W, H - abyssY);
-    
-    // Water Surface Line
     ctx.fillStyle = '#fff'; ctx.fillRect(0, abyssY, W, 2);
 
-    // Floor Line (If water is below it)
-    if (abyssY > FLOOR) {
-        ctx.fillStyle = '#fff'; ctx.fillRect(0, FLOOR, W, 2);
-    }
+    if (abyssY > FLOOR) { ctx.fillStyle = '#fff'; ctx.fillRect(0, FLOOR, W, 2); }
 
     if (SHOW_JUMP_LINE && gameStateRef.current === 'PLAYING') {
       const jumpY = FLOOR - 110; ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.moveTo(0, jumpY); ctx.lineTo(W, jumpY); ctx.stroke(); ctx.setLineDash([]);
@@ -592,7 +590,6 @@ const GameSandbox: FC = () => {
     });
 
     const drawPlayer = (p: Player, xOffset: number, color: string) => {
-      // Don't draw if underwater (drowned)
       if (p.y > waterLevelRef.current + 20) return;
 
       const x = xOffset - PLAYER_SIZE / 2;
@@ -612,7 +609,6 @@ const GameSandbox: FC = () => {
     particles.current.forEach((p, i) => {
       if (p.type === 'PULSE') { p.size += 3; p.life -= 0.05; ctx.strokeStyle = p.color; ctx.lineWidth = 2; ctx.globalAlpha = p.life; ctx.beginPath(); ctx.arc(p.x + 10, p.y + 10, p.size, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1.0; } 
       else if (p.type === 'DUST') { 
-          // BUBBLE DUST
           p.y += p.vy; p.x += p.vx; p.life -= 0.05; 
           ctx.strokeStyle = `rgba(255,255,255,${p.life})`; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.stroke(); 
       }
@@ -650,7 +646,6 @@ const GameSandbox: FC = () => {
 
   const handlePointerDown = (e: any) => {
     if (gameStateRef.current !== 'PLAYING') return;
-    // Check for swipe down or button press? For now, tap logic
     if (gameModeRef.current === 'LINKED') { doJump(pLeft.current, 100); doJump(pRight.current, 300); }
     else {
       const rect = canvasRef.current?.getBoundingClientRect(); if (!rect) return;
@@ -794,21 +789,21 @@ const GameSandbox: FC = () => {
                             <span className="text-xl">⚪</span>
                             <div>
                                 <strong className="text-white block">AIR BUBBLE</strong>
-                                1-Hit Shield. <span className="text-yellow-400">MUST BE GROUNDED.</span>
+                                1-Hit Shield. <span className="text-yellow-400">Push Water Back +150px.</span>
                             </div>
                         </div>
                         <div className="flex items-start gap-3">
                             <span className="text-xl">👻</span>
                             <div>
                                 <strong className="text-purple-400 block">PHASE SHIFT</strong>
-                                8s Invincibility. <span className="text-yellow-400">MUST BE GROUNDED.</span>
+                                8s Invincibility. <span className="text-yellow-400">Ignore Blocks.</span>
                             </div>
                         </div>
                         <div className="flex items-start gap-3">
                             <span className="text-xl">🔺</span>
                             <div>
-                                <strong className="text-red-500 block">CURRENT SURGE</strong>
-                                Dangerous Speed Boost. <span className="text-red-400">AVOID!</span>
+                                <strong className="text-red-500 block">SURGE BOOST</strong>
+                                Extreme Speed. <span className="text-green-400">Push Water Back +300px!</span>
                             </div>
                         </div>
                     </div>
