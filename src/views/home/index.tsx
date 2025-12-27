@@ -96,7 +96,6 @@ export const HomeView: FC = ({ }) => {
                 <h2 className="text-xl font-bold mb-2">DRONE SHOP</h2>
                 <p className="text-gray-500 text-xs mb-6">Unlock skins by reaching milestones!</p>
                 
-                {/* Show locked skins */}
                 <div className="space-y-2 w-full max-w-[280px]">
                   <div className="bg-white/5 border border-gray-700 p-3 rounded flex justify-between items-center">
                     <span className="text-xs text-gray-500">🔒 NEON SKIN</span>
@@ -180,6 +179,9 @@ const GameSandbox: FC = () => {
   const [unlockedBadges, setUnlockedBadges] = useState<string[]>([]);
   const [ghostTimeRemaining, setGhostTimeRemaining] = useState(0); 
   
+  // New: Guide Modal State
+  const [showGuide, setShowGuide] = useState(false);
+  
   // User Info
   const [username, setUsername] = useState('');
   const [showNameInput, setShowNameInput] = useState(true);
@@ -204,7 +206,7 @@ const GameSandbox: FC = () => {
   const shieldTimer = useRef(0);
   const ghostActive = useRef(false); 
   const ghostTimer = useRef(0);
-  const glitchActive = useRef(false); // NEW: Turbo Burst
+  const glitchActive = useRef(false); 
   const glitchTimer = useRef(0);
 
   // Audio Refs
@@ -444,7 +446,7 @@ const GameSandbox: FC = () => {
       }
       if (glitchActive.current) {
           glitchTimer.current -= deltaTime;
-          shakeRef.current = 5; // Constant shake during turbo
+          shakeRef.current = 5; 
           if (glitchTimer.current <= 0) {
               glitchActive.current = false;
               spawnText(MID, 300, "STABILIZED", '#FFF');
@@ -498,13 +500,13 @@ const GameSandbox: FC = () => {
         const rand = Math.random();
         
         if (rand < 0.008 && !ghostActive.current) { 
-            spawnSpecial('GHOST'); // 0.8% Ghost
+            spawnSpecial('GHOST'); 
         } 
         else if (rand < 0.03 && !glitchActive.current) { 
-            spawnSpecial('GLITCH'); // 2.2% Glitch Trap
+            spawnSpecial('GLITCH');
         }
         else if (rand < 0.08 && !shieldActive.current) { 
-            spawnSpecial('ORB'); // 5% Shield
+            spawnSpecial('ORB'); 
         } 
         else {
             const blockRand = Math.random();
@@ -568,7 +570,7 @@ const GameSandbox: FC = () => {
           if (obs.type === 'GLITCH') {
               if (glitchActive.current) return;
               glitchActive.current = true;
-              glitchTimer.current = 120; // 2 seconds of turbo
+              glitchTimer.current = 360; // 6 SECONDS DURATION (UPDATED)
               spawnText(MID, 300, "TURBO BURST!", '#ff0000');
               shakeRef.current = 20;
               triggerEvent('crash', pX, p.y, '#F00');
@@ -964,6 +966,37 @@ const GameSandbox: FC = () => {
                </div>
             )}
 
+            {/* SYSTEM GUIDE OVERLAY */}
+            {showGuide && (
+                <div className="absolute inset-0 bg-black/95 flex flex-col justify-center items-center p-6 z-30 pointer-events-auto">
+                    <h2 className="text-xl font-bold text-cyan-400 mb-4 border-b border-cyan-400 pb-2">SYSTEM LOG</h2>
+                    <div className="space-y-4 text-xs text-gray-300 w-full max-w-[280px]">
+                        <div className="flex items-start gap-3">
+                            <span className="text-xl">⚪</span>
+                            <div>
+                                <strong className="text-white block">SHIELD ORB</strong>
+                                Protects against one hit. <span className="text-yellow-400">MUST BE GROUNDED TO COLLECT.</span>
+                            </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                            <span className="text-xl">👻</span>
+                            <div>
+                                <strong className="text-purple-400 block">PHANTOM MODE</strong>
+                                8s Invincibility. <span className="text-yellow-400">MUST BE GROUNDED TO COLLECT.</span>
+                            </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                            <span className="text-xl">🔺</span>
+                            <div>
+                                <strong className="text-red-500 block">GLITCH TRAP</strong>
+                                Causes Turbo Speed. <span className="text-red-400">AVOID AT ALL COSTS.</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button onClick={() => setShowGuide(false)} className="mt-8 border border-white/20 px-6 py-2 rounded-full text-xs font-bold hover:bg-white/10">CLOSE LOG</button>
+                </div>
+            )}
+
             {gameState === 'GAMEOVER' && (
               <div className="mb-8 text-center flex flex-col items-center w-full">
                 <p className="text-blue-500 font-black text-3xl mb-2 animate-bounce">YOU SINKED 😂</p>
@@ -1022,8 +1055,12 @@ const GameSandbox: FC = () => {
                   <button onClick={toggleMode} className={`px-4 py-2 rounded border text-xs font-bold transition-all ${gameMode === 'DUAL' ? 'bg-white text-black border-white' : 'text-gray-500 border-gray-700'}`}>DUAL</button>
                 </div>
 
-                <button onClick={handleStartGame} className="pointer-events-auto border border-white/20 bg-white/5 px-12 py-5 rounded-full hover:bg-white/10 transition-colors active:scale-95">
+                <button onClick={handleStartGame} className="pointer-events-auto border border-white/20 bg-white/5 px-12 py-5 rounded-full hover:bg-white/10 transition-colors active:scale-95 shadow-lg shadow-cyan-500/20">
                   <span className="font-bold text-white tracking-widest text-lg">ASCEND</span>
+                </button>
+
+                <button onClick={() => setShowGuide(true)} className="mt-6 text-xs text-gray-500 hover:text-white underline tracking-widest pointer-events-auto">
+                    SYSTEM INFO
                 </button>
               </>
             )}
