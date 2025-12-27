@@ -8,7 +8,7 @@ import pkg from '../../../package.json';
 const GOD_MODE = false; 
 const SHOW_JUMP_LINE = false;
 
-// PHYSICS
+// PHYSICS (Updated for Variable Jump)
 const GRAVITY = 0.85;           
 const JUMP_FORCE = -11.5;       
 const BASE_SPEED = 7.5;         
@@ -16,6 +16,7 @@ const SPEED_MULTIPLIER = 1.25;
 const SPAWN_RATE_BASE = 75;     
 const PLAYER_SIZE = 24;
 const HITBOX_PADDING = 5;
+const JUMP_BUFFER_TIME = 150; // 150ms forgiveness window
 
 // PROGRESSION
 const METERS_PER_LEVEL = 300;   
@@ -45,9 +46,9 @@ const ENVIRONMENTS = [
 ];
 
 // TYPES
-type Player = { y: number; vy: number; grounded: boolean; color: string; jumps: number; flash: number };
+type Player = { y: number; vy: number; grounded: boolean; color: string; jumps: number; flash: number; jumpBuffer: number; holding: boolean };
 type Obstacle = { x: number; y: number; w: number; h: number; type: 'BLOCK' | 'ORB' | 'GHOST' | 'GLITCH'; lane: 'LEFT' | 'RIGHT'; passed: boolean; collided: boolean };
-type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number; type?: 'PULSE' };
+type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number; type?: 'PULSE' | 'DUST' }; // Added DUST
 type BgProp = { x: number; y: number; size: number; speed: number; type: 'BUBBLE' | 'CLOUD' | 'STAR' };
 type FloatingText = { x: number; y: number; text: string; life: number; color: string };
 type GameMode = 'LINKED' | 'DUAL';
@@ -168,9 +169,7 @@ const GameSandbox: FC = () => {
   const [unlockedBadges, setUnlockedBadges] = useState<string[]>([]);
   const [ghostTimeRemaining, setGhostTimeRemaining] = useState(0); 
   const [countdown, setCountdown] = useState(3);
-  const [isMuted, setIsMuted] = useState(false); // NEW: Mute State
-  
-  // New: Guide Modal State
+  const [isMuted, setIsMuted] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [username, setUsername] = useState('');
   const [showNameInput, setShowNameInput] = useState(true);
@@ -205,8 +204,9 @@ const GameSandbox: FC = () => {
   const prevEnvIdx = useRef(0);
   const nextEnvIdx = useRef(0);
 
-  const pLeft = useRef<Player>({ y: 0, vy: 0, grounded: true, color: '#fff', jumps: 0, flash: 0 });
-  const pRight = useRef<Player>({ y: 0, vy: 0, grounded: true, color: '#fff', jumps: 0, flash: 0 });
+  // Updated Physics Refs with Buffer & Hold state
+  const pLeft = useRef<Player>({ y: 0, vy: 0, grounded: true, color: '#fff', jumps: 0, flash: 0, jumpBuffer: 0, holding: false });
+  const pRight = useRef<Player>({ y: 0, vy: 0, grounded: true, color: '#fff', jumps: 0, flash: 0, jumpBuffer: 0, holding: false });
   const obstacles = useRef<Obstacle[]>([]);
   const particles = useRef<Particle[]>([]);
   const texts = useRef<FloatingText[]>([]);
@@ -238,7 +238,6 @@ const GameSandbox: FC = () => {
       bgm.volume = 0.6; 
       bgmRef.current = bgm;
 
-      // Auto-Pause on visibility change AND blur (More reliable)
       const handlePauseTrigger = () => {
         if (gameStateRef.current === 'PLAYING') {
             gameStateRef.current = 'PAUSED';
@@ -246,65 +245,41 @@ const GameSandbox: FC = () => {
             if (bgmRef.current) bgmRef.current.pause();
         }
       };
-      document.addEventListener('visibilitychange', () => {
-          if (document.hidden) handlePauseTrigger();
-      });
-      window.addEventListener('blur', handlePauseTrigger); // Added BLUR listener
-
-      return () => {
-          window.removeEventListener('blur', handlePauseTrigger);
-      };
+      document.addEventListener('visibilitychange', () => { if (document.hidden) handlePauseTrigger(); });
+      window.addEventListener('blur', handlePauseTrigger);
+      return () => { window.removeEventListener('blur', handlePauseTrigger); };
   }, []);
 
-  // --- MUSIC ---
   useEffect(() => {
       const bgm = bgmRef.current;
       if (!bgm) return;
-      
-      if (isMuted) {
-          bgm.pause();
-          return;
-      }
-
+      if (isMuted) { bgm.pause(); return; }
       if (gameState === 'PLAYING') {
           const playPromise = bgm.play();
-          if (playPromise !== undefined) {
-              playPromise.catch(error => console.log("Audio play failed (user setting?):", error));
-          }
+          if (playPromise !== undefined) playPromise.catch(error => console.log("Audio play failed:", error));
       } else {
           bgm.pause();
           if (gameState === 'GAMEOVER') bgm.currentTime = 0;
       }
-  }, [gameState, isMuted]); // Reacts to Mute Toggle
+  }, [gameState, isMuted]);
 
   const pulse = (ms: number) => {
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-          navigator.vibrate(ms);
-      }
+      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(ms);
   };
 
   const triggerEvent = (key: string, x: number, y: number, color: string) => {
       if (!isMuted) {
           const sound = audioCtx.current[key];
-          if (sound) {
-              sound.currentTime = 0;
-              sound.play().catch(() => {});
-          }
+          if (sound) { sound.currentTime = 0; sound.play().catch(() => {}); }
       }
-      particles.current.push({
-          x: x, y: y, vx: 0, vy: 0,
-          life: 1.0, color: color, size: 10, type: 'PULSE'
-      });
+      particles.current.push({ x: x, y: y, vx: 0, vy: 0, life: 1.0, color: color, size: 10, type: 'PULSE' });
   }
 
   const checkAchievements = (finalScore: number) => {
       const newBadges = [...unlockedBadges];
       let changed = false;
       ACHIEVEMENTS.forEach(ach => {
-          if (finalScore >= ach.score && !newBadges.includes(ach.id)) {
-              newBadges.push(ach.id);
-              changed = true;
-          }
+          if (finalScore >= ach.score && !newBadges.includes(ach.id)) { newBadges.push(ach.id); changed = true; }
       });
       if (changed) {
           setUnlockedBadges(newBadges);
@@ -321,8 +296,8 @@ const GameSandbox: FC = () => {
     levelRef.current = 0; distanceRef.current = 0; scoreRef.current = 0; setScore(0);
     prevEnvIdx.current = 0; nextEnvIdx.current = 0; transitionProgress.current = 1; 
     setCurrentEnv(ENVIRONMENTS[0]); speedRef.current = BASE_SPEED;
-    pLeft.current = { y: 450, vy: 0, grounded: true, color: ENVIRONMENTS[0].accent, jumps: 0, flash: 0 };
-    pRight.current = { y: 450, vy: 0, grounded: true, color: ENVIRONMENTS[0].accent, jumps: 0, flash: 0 };
+    pLeft.current = { y: 450, vy: 0, grounded: true, color: ENVIRONMENTS[0].accent, jumps: 0, flash: 0, jumpBuffer: 0, holding: false };
+    pRight.current = { y: 450, vy: 0, grounded: true, color: ENVIRONMENTS[0].accent, jumps: 0, flash: 0, jumpBuffer: 0, holding: false };
     obstacles.current = []; particles.current = []; texts.current = []; bgProps.current = [];
     waterLevelRef.current = 600;
     shieldActive.current = false; shieldTimer.current = 0;
@@ -347,6 +322,16 @@ const GameSandbox: FC = () => {
         life: 1.0, color: color, size: Math.random() * 4 + 2
       });
     }
+  };
+
+  const spawnDust = (x: number, y: number) => {
+      for (let i = 0; i < 5; i++) {
+          particles.current.push({
+              x: x + (Math.random() * 20 - 10), y: y, 
+              vx: (Math.random() - 0.5) * 4, vy: -Math.random() * 2,
+              life: 0.6, color: '#fff', size: Math.random() * 3 + 1, type: 'DUST'
+          });
+      }
   };
 
   const spawnText = (x: number, y: number, text: string, color: string) => {
@@ -403,12 +388,39 @@ const GameSandbox: FC = () => {
       bgProps.current = bgProps.current.filter(p => p.y < H + 50);
 
       [pLeft.current, pRight.current].forEach(p => {
-        p.vy += GRAVITY * deltaTime; p.y += p.vy * deltaTime;
+        // Variable Jump Physics
+        if (!p.holding && p.vy < 0) {
+            p.vy *= 0.85; // Cut velocity if button released
+        }
+        
+        p.vy += GRAVITY * deltaTime; 
+        p.y += p.vy * deltaTime;
         if (p.flash > 0) p.flash -= deltaTime;
+        
+        // Jump Buffer Countdown
+        if (p.jumpBuffer > 0) p.jumpBuffer -= deltaTime * 16; 
+
         if (p.y > FLOOR - PLAYER_SIZE) {
-          if (!p.grounded) spawnExplosion(p === pLeft.current ? MID / 2 - 12 : MID + MID / 2 - 12, FLOOR, '#fff', 5);
-          p.y = FLOOR - PLAYER_SIZE; p.vy = 0; p.grounded = true; p.jumps = 0;
-        } else p.grounded = false;
+          // Landing Logic
+          if (!p.grounded) {
+              spawnDust(p === pLeft.current ? MID/2 : MID + MID/2, FLOOR);
+          }
+          p.y = FLOOR - PLAYER_SIZE; 
+          p.vy = 0; 
+          p.grounded = true; 
+          p.jumps = 0;
+
+          // Execute Buffered Jump
+          if (p.jumpBuffer > 0) {
+              p.vy = JUMP_FORCE; 
+              p.jumps++; 
+              p.grounded = false;
+              p.jumpBuffer = 0;
+              spawnExplosion(p === pLeft.current ? 100 : 300, p.y + 20, '#fff', 5);
+          }
+        } else {
+            p.grounded = false;
+        }
       });
 
       frameCount.current += deltaTime;
@@ -437,9 +449,8 @@ const GameSandbox: FC = () => {
         const p = obs.lane === 'LEFT' ? pLeft.current : pRight.current;
         const pX = obs.lane === 'LEFT' ? (MID/2 - PLAYER_SIZE/2) : (MID + MID/2 - PLAYER_SIZE/2);
         
-        // HITBOX CALCULATION
         let hitPadding = HITBOX_PADDING;
-        if (obs.type === 'GLITCH') hitPadding = 18; // TINY HITBOX FOR GLITCH (EASIER TO DODGE)
+        if (obs.type === 'GLITCH') hitPadding = 18; 
 
         const pHitX = pX + hitPadding; const pHitY = p.y + hitPadding;
         const pHitW = PLAYER_SIZE - (hitPadding * 2); const pHitH = PLAYER_SIZE - (hitPadding * 2);
@@ -495,6 +506,17 @@ const GameSandbox: FC = () => {
     if (glitchActive.current) { ctx.fillStyle = `rgba(50, 0, 0, ${Math.random() * 0.3})`; ctx.fillRect(0, 0, W, H); } 
     else { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
 
+    // Speed Lines Effect
+    if (glitchActive.current) {
+        ctx.strokeStyle = `rgba(255, 255, 255, 0.2)`;
+        ctx.lineWidth = 2;
+        for(let i=0; i<5; i++) {
+            const lx = Math.random() * W;
+            const ly = Math.random() * H;
+            ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx, ly + 50); ctx.stroke();
+        }
+    }
+
     if (shakeRef.current > 0) { ctx.translate((Math.random() - 0.5) * shakeRef.current, (Math.random() - 0.5) * shakeRef.current); shakeRef.current *= 0.9; }
 
     const prevEnv = ENVIRONMENTS[prevEnvIdx.current];
@@ -548,6 +570,7 @@ const GameSandbox: FC = () => {
 
     particles.current.forEach((p, i) => {
       if (p.type === 'PULSE') { p.size += 3; p.life -= 0.05; ctx.strokeStyle = p.color; ctx.lineWidth = 2; ctx.globalAlpha = p.life; ctx.beginPath(); ctx.arc(p.x + 10, p.y + 10, p.size, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1.0; } 
+      else if (p.type === 'DUST') { p.y += p.vy; p.x += p.vx; p.life -= 0.05; p.size *= 0.9; ctx.fillStyle = `rgba(255,255,255,${p.life})`; ctx.fillRect(p.x, p.y, p.size, p.size); }
       else { p.x += p.vx; p.y += p.vy; p.life -= 0.05; if (p.life > 0) { ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fillRect(p.x, p.y, p.size, p.size); ctx.globalAlpha = 1.0; } }
       if (p.life <= 0) particles.current.splice(i, 1);
     });
@@ -562,29 +585,61 @@ const GameSandbox: FC = () => {
     return () => cancelAnimationFrame(requestRef.current!);
   }, []);
 
-  const jumpLeft = () => { if (gameStateRef.current === 'PLAYING' && pLeft.current.jumps < 2) { pLeft.current.vy = JUMP_FORCE; pLeft.current.jumps++; pLeft.current.grounded = false; spawnExplosion(100, pLeft.current.y + 20, '#fff', 5); triggerEvent('jump', 100, pLeft.current.y + 20, '#fff'); } };
-  const jumpRight = () => { if (gameStateRef.current === 'PLAYING' && pRight.current.jumps < 2) { pRight.current.vy = JUMP_FORCE; pRight.current.jumps++; pRight.current.grounded = false; spawnExplosion(300, pRight.current.y + 20, '#fff', 5); triggerEvent('jump', 300, pRight.current.y + 20, '#fff'); } };
-  const jumpBoth = () => { jumpLeft(); jumpRight(); };
+  // --- INPUT HANDLERS (UPDATED FOR VARIABLE JUMP) ---
+  const doJump = (p: Player, xPos: number) => {
+      // 1. Buffer Input
+      p.jumpBuffer = JUMP_BUFFER_TIME;
+      p.holding = true; // Mark as holding
 
-  const handleTap = (e: any) => {
+      // 2. Execute Immediate Jump if allowed
+      if (gameStateRef.current === 'PLAYING' && p.jumps < 2) { 
+          p.vy = JUMP_FORCE; 
+          p.jumps++; 
+          p.grounded = false; 
+          p.jumpBuffer = 0; // Consumed
+          spawnExplosion(xPos, p.y + 20, '#fff', 5); 
+          triggerEvent('jump', xPos, p.y + 20, '#fff');
+      }
+  };
+
+  const releaseJump = (p: Player) => {
+      p.holding = false;
+  };
+
+  const handlePointerDown = (e: any) => {
     if (gameStateRef.current !== 'PLAYING') return;
-    if (gameModeRef.current === 'LINKED') jumpBoth();
+    if (gameModeRef.current === 'LINKED') { doJump(pLeft.current, 100); doJump(pRight.current, 300); }
     else {
       const rect = canvasRef.current?.getBoundingClientRect(); if (!rect) return;
       const touches = e.touches ? Array.from(e.touches) : [{ clientX: e.clientX }];
-      touches.forEach((t: any) => { if (t.clientX - rect.left < rect.width / 2) jumpLeft(); else jumpRight(); });
+      touches.forEach((t: any) => { if (t.clientX - rect.left < rect.width / 2) doJump(pLeft.current, 100); else doJump(pRight.current, 300); });
     }
+  };
+
+  const handlePointerUp = (e: any) => {
+      if (gameModeRef.current === 'LINKED') { releaseJump(pLeft.current); releaseJump(pRight.current); }
+      else {
+          // Simplification: Release both on any lift for mobile (hard to track multi-touch lift index accurately without complex ID tracking)
+          releaseJump(pLeft.current); releaseJump(pRight.current); 
+      }
   };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return; // Ignore hold-down repeats
       if (e.key === 'Escape' && gameStateRef.current === 'PLAYING') { gameStateRef.current = 'PAUSED'; setGameState('PAUSED'); if (bgmRef.current) bgmRef.current.pause(); return; }
       if (gameStateRef.current === 'PLAYING') {
-        if (gameModeRef.current === 'LINKED') { if (e.code === 'Space' || e.key === 'ArrowUp' || e.key === 'a' || e.key === 'd') jumpBoth(); } 
-        else { if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') jumpLeft(); if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') jumpRight(); }
+        if (gameModeRef.current === 'LINKED') { if (e.code === 'Space' || e.key === 'ArrowUp') { doJump(pLeft.current, 100); doJump(pRight.current, 300); } } 
+        else { if (e.key === 'ArrowLeft' || e.key === 'a') doJump(pLeft.current, 100); if (e.key === 'ArrowRight' || e.key === 'd') doJump(pRight.current, 300); }
       }
     };
-    window.addEventListener('keydown', handleKeyDown); return () => window.removeEventListener('keydown', handleKeyDown);
+    const handleKeyUp = (e: KeyboardEvent) => {
+        if (gameModeRef.current === 'LINKED') { if (e.code === 'Space' || e.key === 'ArrowUp') { releaseJump(pLeft.current); releaseJump(pRight.current); } }
+        else { if (e.key === 'ArrowLeft' || e.key === 'a') releaseJump(pLeft.current); if (e.key === 'ArrowRight' || e.key === 'd') releaseJump(pRight.current); }
+    };
+    window.addEventListener('keydown', handleKeyDown); 
+    window.addEventListener('keyup', handleKeyUp);
+    return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
   }, []);
 
   const toggleMode = (e: React.MouseEvent) => { e.stopPropagation(); const newMode = gameMode === 'LINKED' ? 'DUAL' : 'LINKED'; setGameMode(newMode); gameModeRef.current = newMode; };
@@ -653,7 +708,10 @@ const GameSandbox: FC = () => {
       )}
 
       {/* GAME CANVAS */}
-      <canvas ref={canvasRef} width={400} height={600} className="w-full h-full object-cover touch-none" style={{ background: '#000' }} onPointerDown={handleTap} />
+      <canvas ref={canvasRef} width={400} height={600} className="w-full h-full object-cover touch-none" style={{ background: '#000' }} 
+        onPointerDown={handlePointerDown} 
+        onPointerUp={handlePointerUp} 
+      />
 
         {/* MENUS */}
         {(gameState !== 'PLAYING') && (
