@@ -365,13 +365,16 @@ const GameSandbox: FC = () => {
       const currentAltitude = Math.floor(distanceRef.current);
       if (currentAltitude > scoreRef.current) { setScore(currentAltitude); scoreRef.current = currentAltitude; }
 
-      // BALANCED WATER LOGIC
-      // 1. Rise slowly
-      waterLevelRef.current -= (currentSpeed * 0.08) * deltaTime; // SLOWER RISE
+      // --- BALANCED WATER LOGIC (FAIR) ---
+      // 1. Rise Very Slowly (Creepy crawl, not a sprint)
+      waterLevelRef.current -= (currentSpeed * 0.03) * deltaTime; 
       
-      // 2. Cap water (so it doesn't instantly kill)
-      if (waterLevelRef.current < H - 150) {
-          waterLevelRef.current += 0.2 * deltaTime; // Rubber band effect
+      // 2. Cap water (so it doesn't instantly kill at start)
+      if (waterLevelRef.current < H - 50) {
+           // No logic here, let it rise if it's visible
+      } else {
+           // Keep it off screen at start
+           waterLevelRef.current = H + 100;
       }
 
       // Check Drowning
@@ -396,8 +399,8 @@ const GameSandbox: FC = () => {
         transitionProgress.current = 0; setCurrentEnv(ENVIRONMENTS[nextEnvIdx.current]);
         speedRef.current = BASE_SPEED * Math.pow(SPEED_MULTIPLIER, newLevel);
         
-        // REWARD: PUSH WATER DOWN ON LEVEL UP
-        waterLevelRef.current += 150; 
+        // REWARD: LEVEL UP PUSHES WATER DOWN
+        waterLevelRef.current += 200; 
         
         spawnText(MID, 200, "DEPTH UP!", '#FFF'); triggerEvent('level', MID, 300, '#FFF');
         pulse(100); 
@@ -479,7 +482,7 @@ const GameSandbox: FC = () => {
           if (obs.type === 'ORB') {
             if (!p.grounded) return; 
             shieldActive.current = true; shieldTimer.current = 300; 
-            waterLevelRef.current += 150; // REWARD: PUSH WATER DOWN
+            waterLevelRef.current += 200; // REWARD: PUSH WATER DOWN A LOT
             spawnText(pX, p.y - 40, "AIR UP!", '#FFF');
             obstacles.current.splice(i, 1); triggerEvent('level', pX, p.y, '#FFF'); pulse(50);
             return;
@@ -493,7 +496,7 @@ const GameSandbox: FC = () => {
           if (obs.type === 'GLITCH') {
               if (glitchActive.current) return;
               glitchActive.current = true; glitchTimer.current = 360; 
-              waterLevelRef.current += 300; // REWARD: HUGE WATER PUSHBACK
+              waterLevelRef.current += 400; // REWARD: MASSIVE WATER PUSHBACK
               spawnText(MID, 300, "SURGE BOOST!", '#ff0000'); shakeRef.current = 20;
               triggerEvent('crash', pX, p.y, '#F00'); obstacles.current.splice(i, 1); pulse(150);
               return;
@@ -773,8 +776,8 @@ const GameSandbox: FC = () => {
                        <p>👆 <strong className="text-white">TAP</strong> to Jump.</p>
                        <p>⏬ <strong className="text-white">SWIPE DOWN</strong> to Dive Fast.</p>
                        <p>⚠️ The <strong className="text-blue-500">TIDE</strong> rises if you are slow.</p>
+                       <p>🫧 Collect <strong className="text-cyan-400">BUBBLES</strong> to push water back.</p>
                        <p>🎮 <strong className="text-white">LINKED MODE:</strong> One tap moves BOTH.</p>
-                       <p>🎯 <strong className="text-white">DUAL MODE:</strong> Independent control.</p>
                    </div>
                    <button onClick={finishTutorial} className="bg-white text-black px-10 py-4 rounded-full font-bold text-lg animate-pulse">I&apos;M READY</button>
                </div>
@@ -789,21 +792,21 @@ const GameSandbox: FC = () => {
                             <span className="text-xl">⚪</span>
                             <div>
                                 <strong className="text-white block">AIR BUBBLE</strong>
-                                1-Hit Shield. <span className="text-yellow-400">Push Water Back +150px.</span>
+                                1-Hit Shield. <span className="text-green-400">Push Water Back (+200).</span>
                             </div>
                         </div>
                         <div className="flex items-start gap-3">
                             <span className="text-xl">👻</span>
                             <div>
                                 <strong className="text-purple-400 block">PHASE SHIFT</strong>
-                                8s Invincibility. <span className="text-yellow-400">Ignore Blocks.</span>
+                                8s Invincibility. <span className="text-green-400">Ignores Blocks.</span>
                             </div>
                         </div>
                         <div className="flex items-start gap-3">
                             <span className="text-xl">🔺</span>
                             <div>
                                 <strong className="text-red-500 block">SURGE BOOST</strong>
-                                Extreme Speed. <span className="text-green-400">Push Water Back +300px!</span>
+                                Extreme Speed. <span className="text-green-400">HUGE Water Pushback (+400).</span>
                             </div>
                         </div>
                     </div>
