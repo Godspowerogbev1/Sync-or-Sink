@@ -19,7 +19,7 @@ const PLAYER_SIZE = 24;
 const HITBOX_PADDING = 5;
 
 // PROGRESSION
-const METERS_PER_LEVEL = 300;   // FIXED: Environment changes every 300m
+const METERS_PER_LEVEL = 300;   
 const PIXELS_TO_METERS = 0.015; 
 
 // ASSETS
@@ -30,7 +30,6 @@ const SOUNDS = {
     BGM: '/sounds/bgm.mp3',
 };
 
-// FIXED: Achievements scaled to 300...1500
 const ACHIEVEMENTS = [
     { id: 'novice', name: 'ASCENDER', score: 300, icon: '🚀' },
     { id: 'pro',    name: 'STRATOSPHERE', score: 900, icon: '⭐' },
@@ -48,7 +47,7 @@ const ENVIRONMENTS = [
 
 // TYPES
 type Player = { y: number; vy: number; grounded: boolean; color: string; jumps: number; flash: number };
-type Obstacle = { x: number; y: number; w: number; h: number; type: 'BLOCK' | 'ORB' | 'GHOST'; lane: 'LEFT' | 'RIGHT'; passed: boolean; collided: boolean };
+type Obstacle = { x: number; y: number; w: number; h: number; type: 'BLOCK' | 'ORB' | 'GHOST' | 'GLITCH'; lane: 'LEFT' | 'RIGHT'; passed: boolean; collided: boolean };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number; type?: 'PULSE' };
 type BgProp = { x: number; y: number; size: number; speed: number; type: 'BUBBLE' | 'CLOUD' | 'STAR' };
 type FloatingText = { x: number; y: number; text: string; life: number; color: string };
@@ -90,7 +89,7 @@ export const HomeView: FC = ({ }) => {
             {/* LEADERBOARD VIEW */}
             {activeTab === 'Rank' && <LeaderboardView />}
 
-            {/* SHOP VIEW (IMPROVED) */}
+            {/* SHOP VIEW */}
             {activeTab === 'Shop' && (
               <div className="flex flex-col h-full items-center justify-center p-8 text-center bg-black space-y-4">
                 <span className="text-4xl mb-4">🛒</span>
@@ -179,7 +178,7 @@ const GameSandbox: FC = () => {
   const [highScore, setHighScore] = useState(0);
   const [currentEnv, setCurrentEnv] = useState(ENVIRONMENTS[0]);
   const [unlockedBadges, setUnlockedBadges] = useState<string[]>([]);
-  const [ghostTimeRemaining, setGhostTimeRemaining] = useState(0); // For HUD
+  const [ghostTimeRemaining, setGhostTimeRemaining] = useState(0); 
   
   // User Info
   const [username, setUsername] = useState('');
@@ -204,7 +203,9 @@ const GameSandbox: FC = () => {
   const shieldActive = useRef(false);
   const shieldTimer = useRef(0);
   const ghostActive = useRef(false); 
-  const ghostTimer = useRef(0);      
+  const ghostTimer = useRef(0);
+  const glitchActive = useRef(false); // NEW: Turbo Burst
+  const glitchTimer = useRef(0);
 
   // Audio Refs
   const audioCtx = useRef<Record<string, HTMLAudioElement>>({});
@@ -331,6 +332,8 @@ const GameSandbox: FC = () => {
     shieldTimer.current = 0;
     ghostActive.current = false;
     ghostTimer.current = 0;
+    glitchActive.current = false;
+    glitchTimer.current = 0;
     setGhostTimeRemaining(0);
     lastTimeRef.current = 0;
   };
@@ -385,8 +388,11 @@ const GameSandbox: FC = () => {
 
     if (gameStateRef.current === 'PLAYING') {
       
+      // Calculate Effective Speed (Boost if Glitch Active)
+      const currentSpeed = speedRef.current * (glitchActive.current ? 1.5 : 1.0);
+
       // ALTITUDE
-      distanceRef.current += (speedRef.current * deltaTime) * PIXELS_TO_METERS;
+      distanceRef.current += (currentSpeed * deltaTime) * PIXELS_TO_METERS;
       const currentAltitude = Math.floor(distanceRef.current);
       
       if (currentAltitude > scoreRef.current) {
@@ -420,7 +426,7 @@ const GameSandbox: FC = () => {
         triggerEvent('level', MID, 300, '#FFF');
       }
 
-      // POWERUP TIMERS
+      // TIMERS
       if (shieldActive.current) {
         shieldTimer.current -= deltaTime;
         if (shieldTimer.current <= 0) shieldActive.current = false;
@@ -428,7 +434,7 @@ const GameSandbox: FC = () => {
       if (ghostActive.current) {
         ghostTimer.current -= deltaTime;
         const remaining = Math.ceil(ghostTimer.current / 60);
-        setGhostTimeRemaining(remaining > 0 ? remaining : 0); // Update HUD
+        setGhostTimeRemaining(remaining > 0 ? remaining : 0); 
 
         if (ghostTimer.current <= 0) {
             ghostActive.current = false;
@@ -436,12 +442,20 @@ const GameSandbox: FC = () => {
             spawnText(MID, 300, "GHOST ENDED", '#FFF');
         }
       }
+      if (glitchActive.current) {
+          glitchTimer.current -= deltaTime;
+          shakeRef.current = 5; // Constant shake during turbo
+          if (glitchTimer.current <= 0) {
+              glitchActive.current = false;
+              spawnText(MID, 300, "STABILIZED", '#FFF');
+          }
+      }
 
       // PROPS
       const activeEnv = ENVIRONMENTS[nextEnvIdx.current];
       if (Math.random() < 0.05) spawnBgProp(activeEnv.type);
       bgProps.current.forEach(p => {
-        p.y += (speedRef.current * 0.5 * p.speed) * deltaTime;
+        p.y += (currentSpeed * 0.5 * p.speed) * deltaTime;
       });
       bgProps.current = bgProps.current.filter(p => p.y < H + 50);
 
@@ -473,7 +487,7 @@ const GameSandbox: FC = () => {
         const spawnRight = (yOffset = 0) => obstacles.current.push({
           x: MID + (MID / 2) - 25, y: -50 + yOffset, w: 50, h: 30, type: 'BLOCK', lane: 'RIGHT', passed: false, collided: false
         });
-        const spawnPowerup = (type: 'ORB' | 'GHOST') => {
+        const spawnSpecial = (type: 'ORB' | 'GHOST' | 'GLITCH') => {
             const lane = Math.random() > 0.5 ? 'LEFT' : 'RIGHT';
             obstacles.current.push({
                 x: lane === 'LEFT' ? MID/2 - 25 : MID + MID/2 - 25,
@@ -481,22 +495,23 @@ const GameSandbox: FC = () => {
             });
         };
 
-        // SPAWN LOGIC: GHOST (0.8%) -> SHIELD (4%) -> BLOCKS
         const rand = Math.random();
         
-        if (rand < 0.008 && !ghostActive.current) { // Ultra Rare Ghost
-            spawnPowerup('GHOST');
+        if (rand < 0.008 && !ghostActive.current) { 
+            spawnSpecial('GHOST'); // 0.8% Ghost
         } 
-        else if (rand < 0.05 && !shieldActive.current) { // Rare Shield
-            spawnPowerup('ORB');
+        else if (rand < 0.03 && !glitchActive.current) { 
+            spawnSpecial('GLITCH'); // 2.2% Glitch Trap
+        }
+        else if (rand < 0.08 && !shieldActive.current) { 
+            spawnSpecial('ORB'); // 5% Shield
         } 
         else {
             const blockRand = Math.random();
             if (blockRand < 0.35) spawnLeft();        
             else if (blockRand < 0.70) spawnRight();  
             else {
-                // STAGGER
-                const shaveGap = -(speedRef.current * 22); 
+                const shaveGap = -(currentSpeed * 22); 
                 if (Math.random() > 0.5) { spawnLeft(0); spawnRight(shaveGap); } 
                 else { spawnRight(0); spawnLeft(shaveGap); }
             }
@@ -504,14 +519,13 @@ const GameSandbox: FC = () => {
         frameCount.current = 0;
       }
 
-      // OBSTACLES (COLLISION FIXED)
+      // OBSTACLES
       obstacles.current.forEach((obs, i) => {
-        obs.y += speedRef.current * deltaTime;
+        obs.y += currentSpeed * deltaTime;
 
         const p = obs.lane === 'LEFT' ? pLeft.current : pRight.current;
         const pX = obs.lane === 'LEFT' ? (MID / 2 - PLAYER_SIZE / 2) : (MID + MID / 2 - PLAYER_SIZE / 2);
 
-        // 1. Calculate the smaller "Fair" Hitbox
         const pHitX = pX + HITBOX_PADDING;
         const pHitY = p.y + HITBOX_PADDING;
         const pHitW = PLAYER_SIZE - (HITBOX_PADDING * 2);
@@ -524,18 +538,15 @@ const GameSandbox: FC = () => {
         
         const isJumpingOver = !p.grounded && p.y < FLOOR - PLAYER_SIZE - 20;
 
-        // 2. USE the smaller hitbox
         if (
             pHitX < obsHitX + obsHitW && 
             pHitX + pHitW > obsHitX && 
             pHitY < obsHitY + obsHitH && 
             pHitY + pHitH > obsHitY
         ) {
-          // POWERUP COLLISION
+          // --- GOOD ITEMS ---
           if (obs.type === 'ORB') {
-            // CONSTRAINT: Must be grounded to collect powerups
-            if (!p.grounded) return;
-
+            if (!p.grounded) return; 
             shieldActive.current = true;
             shieldTimer.current = 300;
             spawnText(pX, p.y - 40, "SHIELD!", '#FFF');
@@ -544,23 +555,30 @@ const GameSandbox: FC = () => {
             return;
           }
           if (obs.type === 'GHOST') {
-            // CONSTRAINT: Must be grounded to collect powerups
-            if (!p.grounded) return;
-
+            if (!p.grounded) return; 
             ghostActive.current = true;
-            ghostTimer.current = 480; // ~8 Seconds @ 60fps
+            ghostTimer.current = 480; 
             spawnText(MID, 300, "GHOST MODE!", '#d946ef');
             obstacles.current.splice(i, 1);
             triggerEvent('level', pX, p.y, '#d946ef');
             return;
           }
+
+          // --- BAD ITEMS (TRAPS) ---
+          if (obs.type === 'GLITCH') {
+              if (glitchActive.current) return;
+              glitchActive.current = true;
+              glitchTimer.current = 120; // 2 seconds of turbo
+              spawnText(MID, 300, "TURBO BURST!", '#ff0000');
+              shakeRef.current = 20;
+              triggerEvent('crash', pX, p.y, '#F00');
+              obstacles.current.splice(i, 1);
+              return;
+          }
           
-          // BLOCK COLLISION
+          // --- BLOCKS ---
           else if (!isJumpingOver) {
-            // If Ghost Mode is active, ignore collision
-            if (ghostActive.current) {
-                return; 
-            }
+            if (ghostActive.current) return; 
 
             obs.collided = true;
             if (shieldActive.current) {
@@ -605,8 +623,15 @@ const GameSandbox: FC = () => {
 
     // --- RENDER ---
     ctx.save();
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, W, H);
+    
+    // Glitch Background Effect
+    if (glitchActive.current) {
+        ctx.fillStyle = `rgba(50, 0, 0, ${Math.random() * 0.3})`;
+        ctx.fillRect(0, 0, W, H);
+    } else {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, W, H);
+    }
 
     if (shakeRef.current > 0) {
       ctx.translate((Math.random() - 0.5) * shakeRef.current, (Math.random() - 0.5) * shakeRef.current);
@@ -667,10 +692,23 @@ const GameSandbox: FC = () => {
       if (obs.type === 'ORB') {
         ctx.shadowBlur = 20; ctx.shadowColor = '#fff'; ctx.fillStyle = '#fff';
         ctx.beginPath(); ctx.arc(obs.x + obs.w / 2, obs.y + obs.h / 2, 10, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
-      } else if (obs.type === 'GHOST') {
-        ctx.shadowBlur = 20; ctx.shadowColor = '#d946ef'; ctx.fillStyle = '#d946ef'; // Purple
+      } 
+      else if (obs.type === 'GHOST') {
+        ctx.shadowBlur = 20; ctx.shadowColor = '#d946ef'; ctx.fillStyle = '#d946ef'; 
         ctx.beginPath(); ctx.arc(obs.x + obs.w / 2, obs.y + obs.h / 2, 10, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
-      } else {
+      } 
+      else if (obs.type === 'GLITCH') {
+        // Draw Red Triangle
+        ctx.shadowBlur = 15; ctx.shadowColor = '#ff0000'; ctx.fillStyle = '#ff0000';
+        ctx.beginPath();
+        const midX = obs.x + obs.w/2;
+        ctx.moveTo(midX, obs.y);
+        ctx.lineTo(obs.x + obs.w, obs.y + obs.h);
+        ctx.lineTo(obs.x, obs.y + obs.h);
+        ctx.fill(); ctx.shadowBlur = 0;
+      }
+      else {
+        // Standard Block
         ctx.shadowBlur = 15;
         const activeEnv = ENVIRONMENTS[nextEnvIdx.current];
         const color = obs.lane === 'LEFT' ? activeEnv.accent : '#FFF';
@@ -696,7 +734,12 @@ const GameSandbox: FC = () => {
       ctx.fillStyle = color;
       if (shieldActive.current) {
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(x + PLAYER_SIZE / 2, p.y + PLAYER_SIZE / 2, PLAYER_SIZE, 0, Math.PI * 2); ctx.stroke();
+        // FLICKER EFFECT (Nehemiah's Idea)
+        if (shieldTimer.current < 120 && Math.floor(Date.now() / 50) % 2 === 0) {
+            // Blink off
+        } else {
+            ctx.beginPath(); ctx.arc(x + PLAYER_SIZE / 2, p.y + PLAYER_SIZE / 2, PLAYER_SIZE, 0, Math.PI * 2); ctx.stroke();
+        }
       }
       let w = PLAYER_SIZE, h = PLAYER_SIZE;
       if (!p.grounded) { h = PLAYER_SIZE + 4; w = PLAYER_SIZE - 4; }
