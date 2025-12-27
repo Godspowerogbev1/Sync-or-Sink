@@ -1,15 +1,14 @@
 // Next, React
 import { FC, useEffect, useState, useRef } from 'react';
-// We keep pkg to avoid breaking relative paths if the template relies on it
 import pkg from '../../../package.json';
 
 // ❌ DO NOT EDIT ANYTHING ABOVE THIS LINE
 
-// --- GAME CONFIGURATION & CONSTANTS ---
+// --- GAME CONFIGURATION ---
 const GOD_MODE = false; 
 const SHOW_JUMP_LINE = false;
 
-// PHYSICS & DIFFICULTY (PRO MODE)
+// PHYSICS
 const GRAVITY = 0.85;           
 const JUMP_FORCE = -11.5;       
 const BASE_SPEED = 7.5;         
@@ -52,7 +51,7 @@ type Particle = { x: number; y: number; vx: number; vy: number; life: number; co
 type BgProp = { x: number; y: number; size: number; speed: number; type: 'BUBBLE' | 'CLOUD' | 'STAR' };
 type FloatingText = { x: number; y: number; text: string; life: number; color: string };
 type GameMode = 'LINKED' | 'DUAL';
-type GameState = 'START' | 'COUNTDOWN' | 'TUTORIAL' | 'PLAYING' | 'PAUSED' | 'GAMEOVER'; // Added COUNTDOWN
+type GameState = 'START' | 'COUNTDOWN' | 'TUTORIAL' | 'PLAYING' | 'PAUSED' | 'GAMEOVER';
 
 // --- 1. THE APP SHELL (HomeView) ---
 export const HomeView: FC = ({ }) => {
@@ -168,12 +167,11 @@ const GameSandbox: FC = () => {
   const [currentEnv, setCurrentEnv] = useState(ENVIRONMENTS[0]);
   const [unlockedBadges, setUnlockedBadges] = useState<string[]>([]);
   const [ghostTimeRemaining, setGhostTimeRemaining] = useState(0); 
-  const [countdown, setCountdown] = useState(3); // New Countdown State
+  const [countdown, setCountdown] = useState(3);
+  const [isMuted, setIsMuted] = useState(false); // NEW: Mute State
   
   // New: Guide Modal State
   const [showGuide, setShowGuide] = useState(false);
-  
-  // User Info
   const [username, setUsername] = useState('');
   const [showNameInput, setShowNameInput] = useState(true);
 
@@ -200,16 +198,13 @@ const GameSandbox: FC = () => {
   const glitchActive = useRef(false); 
   const glitchTimer = useRef(0);
 
-  // Audio Refs
   const audioCtx = useRef<Record<string, HTMLAudioElement>>({});
   const bgmRef = useRef<HTMLAudioElement | null>(null);
 
-  // Transition Refs
   const transitionProgress = useRef(1); 
   const prevEnvIdx = useRef(0);
   const nextEnvIdx = useRef(0);
 
-  // Physics Refs
   const pLeft = useRef<Player>({ y: 0, vy: 0, grounded: true, color: '#fff', jumps: 0, flash: 0 });
   const pRight = useRef<Player>({ y: 0, vy: 0, grounded: true, color: '#fff', jumps: 0, flash: 0 });
   const obstacles = useRef<Obstacle[]>([]);
@@ -243,34 +238,45 @@ const GameSandbox: FC = () => {
       bgm.volume = 0.6; 
       bgmRef.current = bgm;
 
-      // Auto-Pause on blur
-      const handleVisibilityChange = () => {
-        if (document.hidden && gameStateRef.current === 'PLAYING') {
+      // Auto-Pause on visibility change AND blur (More reliable)
+      const handlePauseTrigger = () => {
+        if (gameStateRef.current === 'PLAYING') {
             gameStateRef.current = 'PAUSED';
             setGameState('PAUSED');
             if (bgmRef.current) bgmRef.current.pause();
         }
       };
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-      return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.addEventListener('visibilitychange', () => {
+          if (document.hidden) handlePauseTrigger();
+      });
+      window.addEventListener('blur', handlePauseTrigger); // Added BLUR listener
+
+      return () => {
+          window.removeEventListener('blur', handlePauseTrigger);
+      };
   }, []);
 
   // --- MUSIC ---
   useEffect(() => {
       const bgm = bgmRef.current;
       if (!bgm) return;
+      
+      if (isMuted) {
+          bgm.pause();
+          return;
+      }
+
       if (gameState === 'PLAYING') {
           const playPromise = bgm.play();
           if (playPromise !== undefined) {
-              playPromise.catch(error => console.log("Audio play failed:", error));
+              playPromise.catch(error => console.log("Audio play failed (user setting?):", error));
           }
       } else {
           bgm.pause();
           if (gameState === 'GAMEOVER') bgm.currentTime = 0;
       }
-  }, [gameState]);
+  }, [gameState, isMuted]); // Reacts to Mute Toggle
 
-  // --- HAPTICS HELPER ---
   const pulse = (ms: number) => {
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
           navigator.vibrate(ms);
@@ -278,10 +284,12 @@ const GameSandbox: FC = () => {
   };
 
   const triggerEvent = (key: string, x: number, y: number, color: string) => {
-      const sound = audioCtx.current[key];
-      if (sound) {
-          sound.currentTime = 0;
-          sound.play().catch(() => {});
+      if (!isMuted) {
+          const sound = audioCtx.current[key];
+          if (sound) {
+              sound.currentTime = 0;
+              sound.play().catch(() => {});
+          }
       }
       particles.current.push({
           x: x, y: y, vx: 0, vy: 0,
@@ -375,7 +383,7 @@ const GameSandbox: FC = () => {
         transitionProgress.current = 0; setCurrentEnv(ENVIRONMENTS[nextEnvIdx.current]);
         speedRef.current = BASE_SPEED * Math.pow(SPEED_MULTIPLIER, newLevel);
         spawnText(MID, 200, "ASCENDING!", '#FFF'); triggerEvent('level', MID, 300, '#FFF');
-        pulse(100); // Level Up Haptic
+        pulse(100); 
       }
 
       if (shieldActive.current) { shieldTimer.current -= deltaTime; if (shieldTimer.current <= 0) shieldActive.current = false; }
@@ -428,8 +436,13 @@ const GameSandbox: FC = () => {
         obs.y += currentSpeed * deltaTime;
         const p = obs.lane === 'LEFT' ? pLeft.current : pRight.current;
         const pX = obs.lane === 'LEFT' ? (MID/2 - PLAYER_SIZE/2) : (MID + MID/2 - PLAYER_SIZE/2);
-        const pHitX = pX + HITBOX_PADDING; const pHitY = p.y + HITBOX_PADDING;
-        const pHitW = PLAYER_SIZE - (HITBOX_PADDING * 2); const pHitH = PLAYER_SIZE - (HITBOX_PADDING * 2);
+        
+        // HITBOX CALCULATION
+        let hitPadding = HITBOX_PADDING;
+        if (obs.type === 'GLITCH') hitPadding = 18; // TINY HITBOX FOR GLITCH (EASIER TO DODGE)
+
+        const pHitX = pX + hitPadding; const pHitY = p.y + hitPadding;
+        const pHitW = PLAYER_SIZE - (hitPadding * 2); const pHitH = PLAYER_SIZE - (hitPadding * 2);
         const obsHitX = obs.x + 2; const obsHitY = obs.y + 2;
         const obsHitW = obs.w - 4; const obsHitH = obs.h - 4;
         const isJumpingOver = !p.grounded && p.y < FLOOR - PLAYER_SIZE - 20;
@@ -464,7 +477,7 @@ const GameSandbox: FC = () => {
               shakeRef.current = 20; spawnExplosion(pX, p.y, activeEnv.accent, 30); triggerEvent('crash', pX, p.y, '#F00');
               if (!GOD_MODE) {
                 gameStateRef.current = 'GAMEOVER'; setGameState('GAMEOVER'); waterLevelRef.current = 600;
-                checkAchievements(scoreRef.current); pulse(400); // LONG VIBRATION ON DEATH
+                checkAchievements(scoreRef.current); pulse(400); 
                 if (bgmRef.current) { bgmRef.current.pause(); bgmRef.current.currentTime = 0; }
               } else { p.flash = 20; spawnText(MID, 300, "HIT! (GOD MODE)", '#FF0000'); }
             }
@@ -577,10 +590,9 @@ const GameSandbox: FC = () => {
   const toggleMode = (e: React.MouseEvent) => { e.stopPropagation(); const newMode = gameMode === 'LINKED' ? 'DUAL' : 'LINKED'; setGameMode(newMode); gameModeRef.current = newMode; };
   
   const handleStartGame = () => {
-      if (bgmRef.current) { bgmRef.current.currentTime = 0; bgmRef.current.play().catch(() => {}); }
+      if (bgmRef.current && !isMuted) { bgmRef.current.currentTime = 0; bgmRef.current.play().catch(() => {}); }
       if (showNameInput && username.trim().length > 0) { localStorage.setItem('syncOrSinkName', username); setShowNameInput(false); }
       
-      // TRIGGER COUNTDOWN
       setGameState('COUNTDOWN');
       gameStateRef.current = 'COUNTDOWN';
       setCountdown(3);
@@ -595,13 +607,13 @@ const GameSandbox: FC = () => {
               gameStateRef.current = 'PLAYING';
               initWorld();
           }
-      }, 600); // Fast countdown
+      }, 600);
   };
 
-  const finishTutorial = () => { handleStartGame(); }; // Reuse countdown logic
+  const finishTutorial = () => { handleStartGame(); }; 
   const handleHome = (e: React.MouseEvent) => { e.stopPropagation(); gameStateRef.current = 'START'; setGameState('START'); initWorld(); if (bgmRef.current) bgmRef.current.pause(); }
   const handlePause = (e: React.MouseEvent) => { e.stopPropagation(); gameStateRef.current = 'PAUSED'; setGameState('PAUSED'); if (bgmRef.current) bgmRef.current.pause(); }
-  const handleResume = (e: React.MouseEvent) => { e.stopPropagation(); gameStateRef.current = 'PLAYING'; setGameState('PLAYING'); lastTimeRef.current = 0; if (bgmRef.current) bgmRef.current.play(); }
+  const handleResume = (e: React.MouseEvent) => { e.stopPropagation(); gameStateRef.current = 'PLAYING'; setGameState('PLAYING'); lastTimeRef.current = 0; if (bgmRef.current && !isMuted) bgmRef.current.play(); }
   const handleShare = () => { const text = `I ascended to ${score}m in SyncOrSink! Can you beat the rising tide? #SyncOrSink 🌊🚀 #SolanaGame`; window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank'); };
 
   return (
@@ -624,6 +636,14 @@ const GameSandbox: FC = () => {
             👻 GHOST: {ghostTimeRemaining}s
         </div>
       )}
+
+      {/* MUTE BUTTON (Top Right) */}
+      <button 
+        onClick={() => setIsMuted(!isMuted)}
+        className={`absolute top-16 left-1/2 -translate-x-12 z-20 p-2 rounded-full backdrop-blur border pointer-events-auto transition-all ${isMuted ? 'bg-red-500/20 border-red-500' : 'bg-white/10 border-white/20'}`}
+      >
+        {isMuted ? '🔇' : '🔊'}
+      </button>
 
       {/* PAUSE */}
       {gameState === 'PLAYING' && (
