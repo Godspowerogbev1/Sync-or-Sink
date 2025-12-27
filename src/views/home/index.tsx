@@ -8,15 +8,16 @@ import pkg from '../../../package.json';
 const GOD_MODE = false; 
 const SHOW_JUMP_LINE = false;
 
-// PHYSICS (Updated for Variable Jump)
+// PHYSICS
 const GRAVITY = 0.85;           
-const JUMP_FORCE = -11.5;       
+const JUMP_FORCE = -11.5;
+const DIVE_FORCE = 2.0; // New: Downward thrust       
 const BASE_SPEED = 7.5;         
 const SPEED_MULTIPLIER = 1.25;  
 const SPAWN_RATE_BASE = 75;     
 const PLAYER_SIZE = 24;
 const HITBOX_PADDING = 5;
-const JUMP_BUFFER_TIME = 150; // 150ms forgiveness window
+const JUMP_BUFFER_TIME = 150; 
 
 // PROGRESSION
 const METERS_PER_LEVEL = 300;   
@@ -31,24 +32,24 @@ const SOUNDS = {
 };
 
 const ACHIEVEMENTS = [
-    { id: 'novice', name: 'ASCENDER', score: 300, icon: '🚀' },
-    { id: 'pro',    name: 'STRATOSPHERE', score: 900, icon: '⭐' },
-    { id: 'god',    name: 'INTERSTELLAR', score: 1500, icon: '👑' },
+    { id: 'novice', name: 'SURFACE BREACHER', score: 300, icon: '🌊' },
+    { id: 'pro',    name: 'TRENCH ESCAPEE',   score: 900, icon: '🦈' },
+    { id: 'god',    name: 'THE UNSINKABLE',   score: 1500, icon: '👑' },
 ];
 
 const ENVIRONMENTS = [
-    { name: "ABYSS",    type: 'UNDERWATER', bgTop: '#000000', bgBot: '#0a0a2a', accent: '#00ffff' },
-    { name: "THE DEEP", type: 'UNDERWATER', bgTop: '#0a0a2a', bgBot: '#004488', accent: '#39ff14' },
-    { name: "SURFACE",  type: 'UNDERWATER', bgTop: '#004488', bgBot: '#44aaff', accent: '#ffffff' },
-    { name: "SKY",      type: 'SKY',        bgTop: '#44aaff', bgBot: '#88ccff', accent: '#ffff00' },
-    { name: "STRATO",   type: 'SKY',        bgTop: '#001133', bgBot: '#44aaff', accent: '#ff00ff' },
-    { name: "SPACE",    type: 'SPACE',      bgTop: '#000000', bgBot: '#000000', accent: '#ff0000' }
+    { name: "THE ABYSS",    type: 'UNDERWATER', bgTop: '#000000', bgBot: '#0a0a2a', accent: '#00ffff' },
+    { name: "MID-DEPTH",    type: 'UNDERWATER', bgTop: '#0a0a2a', bgBot: '#004488', accent: '#39ff14' },
+    { name: "THE REEF",     type: 'UNDERWATER', bgTop: '#004488', bgBot: '#44aaff', accent: '#ffffff' },
+    { name: "SURFACE",      type: 'SKY',        bgTop: '#44aaff', bgBot: '#88ccff', accent: '#ffff00' },
+    { name: "STROSPHERE",   type: 'SKY',        bgTop: '#001133', bgBot: '#44aaff', accent: '#ff00ff' },
+    { name: "VOID",         type: 'SPACE',      bgTop: '#000000', bgBot: '#000000', accent: '#ff0000' }
 ];
 
 // TYPES
 type Player = { y: number; vy: number; grounded: boolean; color: string; jumps: number; flash: number; jumpBuffer: number; holding: boolean };
 type Obstacle = { x: number; y: number; w: number; h: number; type: 'BLOCK' | 'ORB' | 'GHOST' | 'GLITCH'; lane: 'LEFT' | 'RIGHT'; passed: boolean; collided: boolean };
-type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number; type?: 'PULSE' | 'DUST' }; // Added DUST
+type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number; type?: 'PULSE' | 'DUST' | 'BUBBLE' };
 type BgProp = { x: number; y: number; size: number; speed: number; type: 'BUBBLE' | 'CLOUD' | 'STAR' };
 type FloatingText = { x: number; y: number; text: string; life: number; color: string };
 type GameMode = 'LINKED' | 'DUAL';
@@ -173,6 +174,9 @@ const GameSandbox: FC = () => {
   const [showGuide, setShowGuide] = useState(false);
   const [username, setUsername] = useState('');
   const [showNameInput, setShowNameInput] = useState(true);
+  
+  // New Stats
+  const [totalRuns, setTotalRuns] = useState(0);
 
   // Game Logic Refs
   const gameStateRef = useRef<GameState>('START');
@@ -187,7 +191,7 @@ const GameSandbox: FC = () => {
   const frameCount = useRef(0);
   const speedRef = useRef(BASE_SPEED);
   const shakeRef = useRef(0);
-  const waterLevelRef = useRef(600);
+  const waterLevelRef = useRef(700); // Start way below screen
   
   // Powerup Refs
   const shieldActive = useRef(false);
@@ -204,7 +208,6 @@ const GameSandbox: FC = () => {
   const prevEnvIdx = useRef(0);
   const nextEnvIdx = useRef(0);
 
-  // Updated Physics Refs with Buffer & Hold state
   const pLeft = useRef<Player>({ y: 0, vy: 0, grounded: true, color: '#fff', jumps: 0, flash: 0, jumpBuffer: 0, holding: false });
   const pRight = useRef<Player>({ y: 0, vy: 0, grounded: true, color: '#fff', jumps: 0, flash: 0, jumpBuffer: 0, holding: false });
   const obstacles = useRef<Obstacle[]>([]);
@@ -216,10 +219,12 @@ const GameSandbox: FC = () => {
   useEffect(() => {
       const savedScore = localStorage.getItem('syncOrSinkHigh');
       if (savedScore) {
-          const parsed = parseInt(savedScore);
-          setHighScore(parsed);
-          highScoreRef.current = parsed; 
+          setHighScore(parseInt(savedScore));
+          highScoreRef.current = parseInt(savedScore); 
       }
+      const savedRuns = localStorage.getItem('syncOrSinkRuns');
+      if (savedRuns) setTotalRuns(parseInt(savedRuns));
+
       const savedName = localStorage.getItem('syncOrSinkName');
       if (savedName) {
           setUsername(savedName);
@@ -290,6 +295,10 @@ const GameSandbox: FC = () => {
           highScoreRef.current = finalScore;
           localStorage.setItem('syncOrSinkHigh', finalScore.toString());
       }
+      // Track Runs
+      const newRuns = (parseInt(localStorage.getItem('syncOrSinkRuns') || '0')) + 1;
+      localStorage.setItem('syncOrSinkRuns', newRuns.toString());
+      setTotalRuns(newRuns);
   };
 
   const initWorld = () => {
@@ -299,7 +308,7 @@ const GameSandbox: FC = () => {
     pLeft.current = { y: 450, vy: 0, grounded: true, color: ENVIRONMENTS[0].accent, jumps: 0, flash: 0, jumpBuffer: 0, holding: false };
     pRight.current = { y: 450, vy: 0, grounded: true, color: ENVIRONMENTS[0].accent, jumps: 0, flash: 0, jumpBuffer: 0, holding: false };
     obstacles.current = []; particles.current = []; texts.current = []; bgProps.current = [];
-    waterLevelRef.current = 600;
+    waterLevelRef.current = 700; // Reset Water
     shieldActive.current = false; shieldTimer.current = 0;
     ghostActive.current = false; ghostTimer.current = 0;
     glitchActive.current = false; glitchTimer.current = 0;
@@ -357,6 +366,27 @@ const GameSandbox: FC = () => {
       const currentAltitude = Math.floor(distanceRef.current);
       if (currentAltitude > scoreRef.current) { setScore(currentAltitude); scoreRef.current = currentAltitude; }
 
+      // RISING WATER LOGIC
+      // Water rises based on a fraction of game speed (it chases you)
+      // If you are fast, you outrun it. If you stumble, it catches up.
+      waterLevelRef.current -= (currentSpeed * 0.15) * deltaTime; 
+      // Clamp water so it doesn't go above a certain point unless you really mess up
+      if (waterLevelRef.current < H - 100) {
+          // If water is too high, give player a chance to run (slow rise)
+          waterLevelRef.current += 0.5 * deltaTime; 
+      }
+
+      // Check Drowning
+      if (pLeft.current.y > waterLevelRef.current || pRight.current.y > waterLevelRef.current) {
+          triggerEvent('crash', MID, waterLevelRef.current, '#00F');
+          if (!GOD_MODE) {
+                gameStateRef.current = 'GAMEOVER'; 
+                setGameState('GAMEOVER'); 
+                checkAchievements(scoreRef.current); 
+                pulse(400); 
+          }
+      }
+
       if (transitionProgress.current < 1) {
         transitionProgress.current += 0.015 * deltaTime; if (transitionProgress.current >= 1) transitionProgress.current = 1;
       }
@@ -367,7 +397,7 @@ const GameSandbox: FC = () => {
         nextEnvIdx.current = Math.min(newLevel, ENVIRONMENTS.length - 1);
         transitionProgress.current = 0; setCurrentEnv(ENVIRONMENTS[nextEnvIdx.current]);
         speedRef.current = BASE_SPEED * Math.pow(SPEED_MULTIPLIER, newLevel);
-        spawnText(MID, 200, "ASCENDING!", '#FFF'); triggerEvent('level', MID, 300, '#FFF');
+        spawnText(MID, 200, "DEPTH UP!", '#FFF'); triggerEvent('level', MID, 300, '#FFF');
         pulse(100); 
       }
 
@@ -375,11 +405,11 @@ const GameSandbox: FC = () => {
       if (ghostActive.current) {
         ghostTimer.current -= deltaTime; const remaining = Math.ceil(ghostTimer.current / 60);
         setGhostTimeRemaining(remaining > 0 ? remaining : 0); 
-        if (ghostTimer.current <= 0) { ghostActive.current = false; setGhostTimeRemaining(0); spawnText(MID, 300, "GHOST ENDED", '#FFF'); pulse(50); }
+        if (ghostTimer.current <= 0) { ghostActive.current = false; setGhostTimeRemaining(0); spawnText(MID, 300, "PHASE ENDED", '#FFF'); pulse(50); }
       }
       if (glitchActive.current) {
           glitchTimer.current -= deltaTime; shakeRef.current = 5; 
-          if (glitchTimer.current <= 0) { glitchActive.current = false; spawnText(MID, 300, "STABILIZED", '#FFF'); pulse(50); }
+          if (glitchTimer.current <= 0) { glitchActive.current = false; spawnText(MID, 300, "FLOW STABLE", '#FFF'); pulse(50); }
       }
 
       const activeEnv = ENVIRONMENTS[nextEnvIdx.current];
@@ -388,34 +418,18 @@ const GameSandbox: FC = () => {
       bgProps.current = bgProps.current.filter(p => p.y < H + 50);
 
       [pLeft.current, pRight.current].forEach(p => {
-        // Variable Jump Physics
-        if (!p.holding && p.vy < 0) {
-            p.vy *= 0.85; // Cut velocity if button released
-        }
+        if (!p.holding && p.vy < 0) { p.vy *= 0.85; }
         
         p.vy += GRAVITY * deltaTime; 
         p.y += p.vy * deltaTime;
         if (p.flash > 0) p.flash -= deltaTime;
-        
-        // Jump Buffer Countdown
         if (p.jumpBuffer > 0) p.jumpBuffer -= deltaTime * 16; 
 
         if (p.y > FLOOR - PLAYER_SIZE) {
-          // Landing Logic
-          if (!p.grounded) {
-              spawnDust(p === pLeft.current ? MID/2 : MID + MID/2, FLOOR);
-          }
-          p.y = FLOOR - PLAYER_SIZE; 
-          p.vy = 0; 
-          p.grounded = true; 
-          p.jumps = 0;
-
-          // Execute Buffered Jump
+          if (!p.grounded) { spawnDust(p === pLeft.current ? MID/2 : MID + MID/2, FLOOR); }
+          p.y = FLOOR - PLAYER_SIZE; p.vy = 0; p.grounded = true; p.jumps = 0;
           if (p.jumpBuffer > 0) {
-              p.vy = JUMP_FORCE; 
-              p.jumps++; 
-              p.grounded = false;
-              p.jumpBuffer = 0;
+              p.vy = JUMP_FORCE; p.jumps++; p.grounded = false; p.jumpBuffer = 0;
               spawnExplosion(p === pLeft.current ? 100 : 300, p.y + 20, '#fff', 5);
           }
         } else {
@@ -458,23 +472,24 @@ const GameSandbox: FC = () => {
         const obsHitW = obs.w - 4; const obsHitH = obs.h - 4;
         const isJumpingOver = !p.grounded && p.y < FLOOR - PLAYER_SIZE - 20;
 
+        // COLLISION CHECK
         if (pHitX < obsHitX + obsHitW && pHitX + pHitW > obsHitX && pHitY < obsHitY + obsHitH && pHitY + pHitH > obsHitY) {
           if (obs.type === 'ORB') {
             if (!p.grounded) return; 
-            shieldActive.current = true; shieldTimer.current = 300; spawnText(pX, p.y - 40, "SHIELD!", '#FFF');
+            shieldActive.current = true; shieldTimer.current = 300; spawnText(pX, p.y - 40, "BUBBLE UP!", '#FFF');
             obstacles.current.splice(i, 1); triggerEvent('level', pX, p.y, '#FFF'); pulse(50);
             return;
           }
           if (obs.type === 'GHOST') {
             if (!p.grounded) return; 
-            ghostActive.current = true; ghostTimer.current = 480; spawnText(MID, 300, "GHOST MODE!", '#d946ef');
+            ghostActive.current = true; ghostTimer.current = 480; spawnText(MID, 300, "PHASE SHIFT!", '#d946ef');
             obstacles.current.splice(i, 1); triggerEvent('level', pX, p.y, '#d946ef'); pulse(50);
             return;
           }
           if (obs.type === 'GLITCH') {
               if (glitchActive.current) return;
               glitchActive.current = true; glitchTimer.current = 360; 
-              spawnText(MID, 300, "TURBO BURST!", '#ff0000'); shakeRef.current = 20;
+              spawnText(MID, 300, "CURRENT SURGE!", '#ff0000'); shakeRef.current = 20;
               triggerEvent('crash', pX, p.y, '#F00'); obstacles.current.splice(i, 1); pulse(150);
               return;
           }
@@ -482,24 +497,37 @@ const GameSandbox: FC = () => {
             if (ghostActive.current) return; 
             obs.collided = true;
             if (shieldActive.current) {
-              shieldActive.current = false; spawnExplosion(pX, p.y, '#FFF', 20); spawnText(MID, 300, "SHIELD BROKEN", '#F00');
+              shieldActive.current = false; spawnExplosion(pX, p.y, '#FFF', 20); spawnText(MID, 300, "BUBBLE POPPED", '#F00');
               obstacles.current.splice(i, 1); shakeRef.current = 10; triggerEvent('crash', pX, p.y, '#F00'); pulse(100);
             } else if (p.flash <= 0) {
               shakeRef.current = 20; spawnExplosion(pX, p.y, activeEnv.accent, 30); triggerEvent('crash', pX, p.y, '#F00');
               if (!GOD_MODE) {
-                gameStateRef.current = 'GAMEOVER'; setGameState('GAMEOVER'); waterLevelRef.current = 600;
+                gameStateRef.current = 'GAMEOVER'; setGameState('GAMEOVER'); // Don't reset water here, let it cover screen
                 checkAchievements(scoreRef.current); pulse(400); 
                 if (bgmRef.current) { bgmRef.current.pause(); bgmRef.current.currentTime = 0; }
               } else { p.flash = 20; spawnText(MID, 300, "HIT! (GOD MODE)", '#FF0000'); }
             }
           }
         }
+        
+        // NEAR MISS DETECTION (Juice)
+        if (!obs.collided && !obs.passed && obs.type === 'BLOCK') {
+             const distX = Math.abs(pHitX - obsHitX);
+             const distY = Math.abs(pHitY - obsHitY);
+             if (distX < 40 && distY < 40 && !isJumpingOver) {
+                 // Close call!
+             }
+        }
+
         if (!obs.passed && !obs.collided && obs.y > p.y + PLAYER_SIZE) obs.passed = true;
       });
       obstacles.current = obstacles.current.filter(o => o.y < H + 50);
     }
 
-    if (gameStateRef.current === 'GAMEOVER') { if (waterLevelRef.current > 0) waterLevelRef.current -= 15 * deltaTime; }
+    if (gameStateRef.current === 'GAMEOVER') { 
+        // Fast Rise water on Game Over
+        if (waterLevelRef.current > -50) waterLevelRef.current -= 500 * deltaTime; 
+    }
 
     // --- RENDER ---
     ctx.save();
@@ -511,8 +539,7 @@ const GameSandbox: FC = () => {
         ctx.strokeStyle = `rgba(255, 255, 255, 0.2)`;
         ctx.lineWidth = 2;
         for(let i=0; i<5; i++) {
-            const lx = Math.random() * W;
-            const ly = Math.random() * H;
+            const lx = Math.random() * W; const ly = Math.random() * H;
             ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx, ly + 50); ctx.stroke();
         }
     }
@@ -537,10 +564,21 @@ const GameSandbox: FC = () => {
       else { ctx.fillStyle = '#FFF'; ctx.fillRect(p.x, p.y, p.size, p.size); }
     });
 
-    const waterY = gameStateRef.current === 'GAMEOVER' ? waterLevelRef.current : FLOOR + 10;
-    ctx.fillStyle = 'rgba(0, 150, 255, 0.5)'; ctx.fillRect(0, waterY, W, H - waterY);
-    ctx.shadowBlur = 10; ctx.shadowColor = '#fff'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(MID, 0); ctx.lineTo(MID, H); ctx.stroke(); ctx.shadowBlur = 0;
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, FLOOR, W, 2);
+    // DRAW RISING WATER (THE ABYSS)
+    const abyssY = Math.max(waterLevelRef.current, 0); // Don't go above top
+    const waterGrad = ctx.createLinearGradient(0, abyssY, 0, H);
+    waterGrad.addColorStop(0, 'rgba(0, 100, 255, 0.8)'); // Surface
+    waterGrad.addColorStop(1, 'rgba(0, 0, 50, 1.0)');    // Deep
+    ctx.fillStyle = waterGrad;
+    ctx.fillRect(0, abyssY, W, H - abyssY);
+    
+    // Water Surface Line
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, abyssY, W, 2);
+
+    // Floor Line (If water is below it)
+    if (abyssY > FLOOR) {
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, FLOOR, W, 2);
+    }
 
     if (SHOW_JUMP_LINE && gameStateRef.current === 'PLAYING') {
       const jumpY = FLOOR - 110; ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.moveTo(0, jumpY); ctx.lineTo(W, jumpY); ctx.stroke(); ctx.setLineDash([]);
@@ -554,6 +592,9 @@ const GameSandbox: FC = () => {
     });
 
     const drawPlayer = (p: Player, xOffset: number, color: string) => {
+      // Don't draw if underwater (drowned)
+      if (p.y > waterLevelRef.current + 20) return;
+
       const x = xOffset - PLAYER_SIZE / 2;
       if (p.flash > 0 && Math.floor(Date.now() / 50) % 2 === 0) return;
       if (ghostActive.current) { ctx.globalAlpha = 0.4; ctx.shadowBlur = 0; } else { ctx.shadowBlur = 20; ctx.shadowColor = color; }
@@ -570,7 +611,11 @@ const GameSandbox: FC = () => {
 
     particles.current.forEach((p, i) => {
       if (p.type === 'PULSE') { p.size += 3; p.life -= 0.05; ctx.strokeStyle = p.color; ctx.lineWidth = 2; ctx.globalAlpha = p.life; ctx.beginPath(); ctx.arc(p.x + 10, p.y + 10, p.size, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1.0; } 
-      else if (p.type === 'DUST') { p.y += p.vy; p.x += p.vx; p.life -= 0.05; p.size *= 0.9; ctx.fillStyle = `rgba(255,255,255,${p.life})`; ctx.fillRect(p.x, p.y, p.size, p.size); }
+      else if (p.type === 'DUST') { 
+          // BUBBLE DUST
+          p.y += p.vy; p.x += p.vx; p.life -= 0.05; 
+          ctx.strokeStyle = `rgba(255,255,255,${p.life})`; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.stroke(); 
+      }
       else { p.x += p.vx; p.y += p.vy; p.life -= 0.05; if (p.life > 0) { ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fillRect(p.x, p.y, p.size, p.size); ctx.globalAlpha = 1.0; } }
       if (p.life <= 0) particles.current.splice(i, 1);
     });
@@ -585,29 +630,27 @@ const GameSandbox: FC = () => {
     return () => cancelAnimationFrame(requestRef.current!);
   }, []);
 
-  // --- INPUT HANDLERS (UPDATED FOR VARIABLE JUMP) ---
+  // --- INPUT HANDLERS (UPDATED FOR DIVE) ---
   const doJump = (p: Player, xPos: number) => {
-      // 1. Buffer Input
       p.jumpBuffer = JUMP_BUFFER_TIME;
-      p.holding = true; // Mark as holding
-
-      // 2. Execute Immediate Jump if allowed
+      p.holding = true; 
       if (gameStateRef.current === 'PLAYING' && p.jumps < 2) { 
-          p.vy = JUMP_FORCE; 
-          p.jumps++; 
-          p.grounded = false; 
-          p.jumpBuffer = 0; // Consumed
-          spawnExplosion(xPos, p.y + 20, '#fff', 5); 
-          triggerEvent('jump', xPos, p.y + 20, '#fff');
+          p.vy = JUMP_FORCE; p.jumps++; p.grounded = false; p.jumpBuffer = 0; 
+          spawnExplosion(xPos, p.y + 20, '#fff', 5); triggerEvent('jump', xPos, p.y + 20, '#fff');
       }
   };
 
-  const releaseJump = (p: Player) => {
-      p.holding = false;
-  };
+  const doDive = () => {
+      // EMERGENCY DIVE
+      pLeft.current.vy += DIVE_FORCE;
+      pRight.current.vy += DIVE_FORCE;
+  }
+
+  const releaseJump = (p: Player) => { p.holding = false; };
 
   const handlePointerDown = (e: any) => {
     if (gameStateRef.current !== 'PLAYING') return;
+    // Check for swipe down or button press? For now, tap logic
     if (gameModeRef.current === 'LINKED') { doJump(pLeft.current, 100); doJump(pRight.current, 300); }
     else {
       const rect = canvasRef.current?.getBoundingClientRect(); if (!rect) return;
@@ -617,19 +660,16 @@ const GameSandbox: FC = () => {
   };
 
   const handlePointerUp = (e: any) => {
-      if (gameModeRef.current === 'LINKED') { releaseJump(pLeft.current); releaseJump(pRight.current); }
-      else {
-          // Simplification: Release both on any lift for mobile (hard to track multi-touch lift index accurately without complex ID tracking)
-          releaseJump(pLeft.current); releaseJump(pRight.current); 
-      }
+      releaseJump(pLeft.current); releaseJump(pRight.current); 
   };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.repeat) return; // Ignore hold-down repeats
+      if (e.repeat) return; 
       if (e.key === 'Escape' && gameStateRef.current === 'PLAYING') { gameStateRef.current = 'PAUSED'; setGameState('PAUSED'); if (bgmRef.current) bgmRef.current.pause(); return; }
       if (gameStateRef.current === 'PLAYING') {
-        if (gameModeRef.current === 'LINKED') { if (e.code === 'Space' || e.key === 'ArrowUp') { doJump(pLeft.current, 100); doJump(pRight.current, 300); } } 
+        if (e.key === 'ArrowDown' || e.key === 's') doDive();
+        else if (gameModeRef.current === 'LINKED') { if (e.code === 'Space' || e.key === 'ArrowUp') { doJump(pLeft.current, 100); doJump(pRight.current, 300); } } 
         else { if (e.key === 'ArrowLeft' || e.key === 'a') doJump(pLeft.current, 100); if (e.key === 'ArrowRight' || e.key === 'd') doJump(pRight.current, 300); }
       }
     };
@@ -637,8 +677,7 @@ const GameSandbox: FC = () => {
         if (gameModeRef.current === 'LINKED') { if (e.code === 'Space' || e.key === 'ArrowUp') { releaseJump(pLeft.current); releaseJump(pRight.current); } }
         else { if (e.key === 'ArrowLeft' || e.key === 'a') releaseJump(pLeft.current); if (e.key === 'ArrowRight' || e.key === 'd') releaseJump(pRight.current); }
     };
-    window.addEventListener('keydown', handleKeyDown); 
-    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('keydown', handleKeyDown); window.addEventListener('keyup', handleKeyUp);
     return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
   }, []);
 
@@ -669,18 +708,18 @@ const GameSandbox: FC = () => {
   const handleHome = (e: React.MouseEvent) => { e.stopPropagation(); gameStateRef.current = 'START'; setGameState('START'); initWorld(); if (bgmRef.current) bgmRef.current.pause(); }
   const handlePause = (e: React.MouseEvent) => { e.stopPropagation(); gameStateRef.current = 'PAUSED'; setGameState('PAUSED'); if (bgmRef.current) bgmRef.current.pause(); }
   const handleResume = (e: React.MouseEvent) => { e.stopPropagation(); gameStateRef.current = 'PLAYING'; setGameState('PLAYING'); lastTimeRef.current = 0; if (bgmRef.current && !isMuted) bgmRef.current.play(); }
-  const handleShare = () => { const text = `I ascended to ${score}m in SyncOrSink! Can you beat the rising tide? #SyncOrSink 🌊🚀 #SolanaGame`; window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank'); };
+  const handleShare = () => { const text = `I survived ${score}m in #SyncOrSink! Can you beat the rising tide? 🌊🚀 #SolanaGame`; window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank'); };
 
   return (
     <>
       {/* HUD */}
       <div className="absolute top-16 w-full max-w-[400px] flex justify-between px-4 z-10 pointer-events-none">
         <div className="bg-black/50 backdrop-blur px-4 py-2 rounded-full border border-white/20 flex flex-col items-center">
-          <span className="text-[10px] text-gray-400 tracking-[0.3em]">ALTITUDE</span>
+          <span className="text-[10px] text-gray-400 tracking-[0.3em]">DEPTH</span>
           <span className="text-xl font-bold font-mono text-white">{score}m</span>
         </div>
         <div className="bg-black/50 backdrop-blur px-4 py-2 rounded-full border border-white/20 flex flex-col items-center">
-          <span className="text-[10px] text-gray-400 tracking-[0.3em]">DEPTH</span>
+          <span className="text-[10px] text-gray-400 tracking-[0.3em]">ZONE</span>
           <span className="text-xs font-bold font-mono text-white">{currentEnv.name}</span>
         </div>
       </div>
@@ -688,7 +727,7 @@ const GameSandbox: FC = () => {
       {/* GHOST TIMER HUD */}
       {ghostTimeRemaining > 0 && (
         <div className="absolute top-32 left-1/2 -translate-x-1/2 bg-purple-500/20 border border-purple-500 px-4 py-1 rounded-full text-xs font-bold text-purple-300 z-10 animate-pulse">
-            👻 GHOST: {ghostTimeRemaining}s
+            👻 PHASE SHIFT: {ghostTimeRemaining}s
         </div>
       )}
 
@@ -734,14 +773,13 @@ const GameSandbox: FC = () => {
 
             {gameState === 'TUTORIAL' && (
                <div className="flex flex-col items-center text-center max-w-[300px] pointer-events-auto">
-                   <h2 className="text-2xl font-bold text-cyan-400 mb-4">HOW TO PLAY</h2>
+                   <h2 className="text-2xl font-bold text-cyan-400 mb-4">SURVIVAL GUIDE</h2>
                    <div className="space-y-4 text-sm text-gray-300 mb-8">
                        <p>👆 <strong className="text-white">TAP</strong> to Jump.</p>
-                       <p>👆👆 <strong className="text-white">DOUBLE TAP</strong> to Jump Higher.</p>
-                       <p>⚠️ Avoid the <strong className="text-red-400">BLOCKS</strong>.</p>
-                       <p>🌊 Don&apos;t let the water rise.</p>
-                       <p>🎮 <strong className="text-white">LINKED MODE:</strong> One tap moves BOTH droids.</p>
-                       <p>🎯 <strong className="text-white">DUAL MODE:</strong> Tap left/right independently.</p>
+                       <p>⏬ <strong className="text-white">SWIPE DOWN</strong> to Dive Fast.</p>
+                       <p>⚠️ The <strong className="text-blue-500">TIDE</strong> rises if you are slow.</p>
+                       <p>🎮 <strong className="text-white">LINKED MODE:</strong> One tap moves BOTH.</p>
+                       <p>🎯 <strong className="text-white">DUAL MODE:</strong> Independent control.</p>
                    </div>
                    <button onClick={finishTutorial} className="bg-white text-black px-10 py-4 rounded-full font-bold text-lg animate-pulse">I&apos;M READY</button>
                </div>
@@ -755,22 +793,22 @@ const GameSandbox: FC = () => {
                         <div className="flex items-start gap-3">
                             <span className="text-xl">⚪</span>
                             <div>
-                                <strong className="text-white block">SHIELD ORB</strong>
-                                Protects against one hit. <span className="text-yellow-400">MUST BE GROUNDED TO COLLECT.</span>
+                                <strong className="text-white block">AIR BUBBLE</strong>
+                                1-Hit Shield. <span className="text-yellow-400">MUST BE GROUNDED.</span>
                             </div>
                         </div>
                         <div className="flex items-start gap-3">
                             <span className="text-xl">👻</span>
                             <div>
-                                <strong className="text-purple-400 block">PHANTOM MODE</strong>
-                                8s Invincibility. <span className="text-yellow-400">MUST BE GROUNDED TO COLLECT.</span>
+                                <strong className="text-purple-400 block">PHASE SHIFT</strong>
+                                8s Invincibility. <span className="text-yellow-400">MUST BE GROUNDED.</span>
                             </div>
                         </div>
                         <div className="flex items-start gap-3">
                             <span className="text-xl">🔺</span>
                             <div>
-                                <strong className="text-red-500 block">GLITCH TRAP</strong>
-                                Causes Turbo Speed. <span className="text-red-400">AVOID AT ALL COSTS.</span>
+                                <strong className="text-red-500 block">CURRENT SURGE</strong>
+                                Dangerous Speed Boost. <span className="text-red-400">AVOID!</span>
                             </div>
                         </div>
                     </div>
@@ -780,10 +818,18 @@ const GameSandbox: FC = () => {
 
             {gameState === 'GAMEOVER' && (
               <div className="mb-8 text-center flex flex-col items-center w-full">
-                <p className="text-blue-500 font-black text-3xl mb-2 animate-bounce">YOU SINKED 😂</p>
+                <p className="text-blue-500 font-black text-3xl mb-2 animate-bounce">YOU DROWNED 💀</p>
                 <div className="bg-white/10 p-4 rounded-xl mb-4 w-full max-w-[280px]">
-                    <p className="text-gray-400 text-xs tracking-widest">FINAL ALTITUDE</p>
-                    <p className="text-4xl font-bold text-white mb-2">{score}m</p>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <p className="text-gray-400 text-[10px] tracking-widest">DEPTH REACHED</p>
+                            <p className="text-2xl font-bold text-white">{score}m</p>
+                        </div>
+                        <div>
+                            <p className="text-gray-400 text-[10px] tracking-widest">TOTAL DIVES</p>
+                            <p className="text-2xl font-bold text-white">{totalRuns}</p>
+                        </div>
+                    </div>
                     <div className="flex justify-between text-xs text-gray-500 border-t border-white/10 pt-2">
                         <span>BEST: {highScore}m</span>
                         {score >= highScore && <span className="text-yellow-400">NEW RECORD!</span>}
@@ -800,7 +846,7 @@ const GameSandbox: FC = () => {
                 </div>
 
                 <div className="flex flex-col gap-3 w-full max-w-[280px] pointer-events-auto">
-                  <button onClick={handleStartGame} className="bg-white hover:bg-gray-200 text-black w-full py-4 rounded-full font-bold text-sm tracking-widest transition-all">TRY AGAIN</button>
+                  <button onClick={handleStartGame} className="bg-white hover:bg-gray-200 text-black w-full py-4 rounded-full font-bold text-sm tracking-widest transition-all">DIVE AGAIN</button>
                   <div className="flex gap-3">
                       <button onClick={handleHome} className="bg-gray-800 hover:bg-gray-700 text-white flex-1 py-3 rounded-full font-bold text-xs tracking-widest transition-all">HOME</button>
                       <button onClick={handleShare} className="bg-blue-500 hover:bg-blue-400 text-white flex-1 py-3 rounded-full font-bold text-xs tracking-widest transition-all">SHARE</button>
@@ -837,7 +883,7 @@ const GameSandbox: FC = () => {
                 </div>
 
                 <button onClick={handleStartGame} className="pointer-events-auto border border-white/20 bg-white/5 px-12 py-5 rounded-full hover:bg-white/10 transition-colors active:scale-95 shadow-lg shadow-cyan-500/20">
-                  <span className="font-bold text-white tracking-widest text-lg">ASCEND</span>
+                  <span className="font-bold text-white tracking-widest text-lg">INITIATE DIVE</span>
                 </button>
 
                 <button onClick={() => setShowGuide(true)} className="mt-6 text-xs text-gray-500 hover:text-white underline tracking-widest pointer-events-auto">
