@@ -1,6 +1,5 @@
 // Next, React
 import { FC, useEffect, useState, useRef } from 'react';
-import pkg from '../../../package.json';
 
 // ❌ DO NOT EDIT ANYTHING ABOVE THIS LINE
 
@@ -8,7 +7,7 @@ import pkg from '../../../package.json';
 const GOD_MODE = false; 
 const SHOW_JUMP_LINE = false;
 
-// PHYSICS (Updated for Variable Jump)
+// PHYSICS (Variable Jump + Buffer)
 const GRAVITY = 0.85;           
 const JUMP_FORCE = -11.5;       
 const BASE_SPEED = 7.5;         
@@ -16,7 +15,7 @@ const SPEED_MULTIPLIER = 1.25;
 const SPAWN_RATE_BASE = 75;     
 const PLAYER_SIZE = 24;
 const HITBOX_PADDING = 5;
-const JUMP_BUFFER_TIME = 150; // 150ms forgiveness window
+const JUMP_BUFFER_TIME = 150; 
 
 // PROGRESSION
 const METERS_PER_LEVEL = 300;   
@@ -48,7 +47,7 @@ const ENVIRONMENTS = [
 // TYPES
 type Player = { y: number; vy: number; grounded: boolean; color: string; jumps: number; flash: number; jumpBuffer: number; holding: boolean };
 type Obstacle = { x: number; y: number; w: number; h: number; type: 'BLOCK' | 'ORB' | 'GHOST' | 'GLITCH'; lane: 'LEFT' | 'RIGHT'; passed: boolean; collided: boolean };
-type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number; type?: 'PULSE' | 'DUST' }; // Added DUST
+type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number; type?: 'PULSE' | 'DUST' };
 type BgProp = { x: number; y: number; size: number; speed: number; type: 'BUBBLE' | 'CLOUD' | 'STAR' };
 type FloatingText = { x: number; y: number; text: string; life: number; color: string };
 type GameMode = 'LINKED' | 'DUAL';
@@ -170,6 +169,8 @@ const GameSandbox: FC = () => {
   const [ghostTimeRemaining, setGhostTimeRemaining] = useState(0); 
   const [countdown, setCountdown] = useState(3);
   const [isMuted, setIsMuted] = useState(false);
+  const isMutedRef = useRef(false); // Ref for loop access
+  
   const [showGuide, setShowGuide] = useState(false);
   const [username, setUsername] = useState('');
   const [showNameInput, setShowNameInput] = useState(true);
@@ -251,6 +252,7 @@ const GameSandbox: FC = () => {
   }, []);
 
   useEffect(() => {
+      isMutedRef.current = isMuted; // Keep ref in sync
       const bgm = bgmRef.current;
       if (!bgm) return;
       if (isMuted) { bgm.pause(); return; }
@@ -268,7 +270,7 @@ const GameSandbox: FC = () => {
   };
 
   const triggerEvent = (key: string, x: number, y: number, color: string) => {
-      if (!isMuted) {
+      if (!isMutedRef.current) { // Use ref for immediate check
           const sound = audioCtx.current[key];
           if (sound) { sound.currentTime = 0; sound.play().catch(() => {}); }
       }
