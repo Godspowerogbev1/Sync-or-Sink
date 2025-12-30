@@ -8,8 +8,8 @@ const GOD_MODE = false;
 const SHOW_JUMP_LINE = false;
 
 // PHYSICS
-const GRAVITY = 0.85;           
-const JUMP_FORCE = -11.5;       
+const GRAVITY = 0.8;           
+const JUMP_FORCE = -12.2;       
 const BASE_SPEED = 7.5;         
 const SPEED_MULTIPLIER = 1.25;  
 const SPAWN_RATE_BASE = 75;     
@@ -317,9 +317,9 @@ const GameSandbox: FC = () => {
         const spawnSpecial = (type: 'ORB'|'GHOST'|'GLITCH') => { const lane = Math.random() > 0.5 ? 'LEFT' : 'RIGHT'; obstacles.current.push({ x: lane === 'LEFT' ? MID/2 - 25 : MID + MID/2 - 25, y: -50, w: 50, h: 25, type: type, lane: lane, passed: false, collided: false }); };
         
         const rand = Math.random();
-        if (rand < 0.008 && !ghostActive.current) spawnSpecial('GHOST'); 
-        else if (rand < 0.03 && !glitchActive.current) spawnSpecial('GLITCH');
-        else if (rand < 0.08 && !shieldActive.current) spawnSpecial('ORB'); 
+        if (rand < 0.06 && !ghostActive.current) spawnSpecial('GHOST'); 
+        else if (rand < 0.06 && !glitchActive.current) spawnSpecial('GLITCH');
+        else if (rand < 0.1 && !shieldActive.current) spawnSpecial('ORB'); 
         else { 
             const pattern = Math.random();
             if (pattern < 0.30) spawnLeft(); 
